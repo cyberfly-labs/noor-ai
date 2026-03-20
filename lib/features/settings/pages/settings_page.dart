@@ -1,0 +1,666 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/services/model_manager.dart';
+import '../../../core/services/quran_api_config_service.dart';
+import '../../../core/services/quran_user_session_service.dart';
+import '../../../core/services/quran_user_sync_service.dart';
+import '../../../core/services/voice_service.dart';
+import '../../../core/theme/app_theme.dart';
+
+class SettingsPage extends ConsumerStatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends ConsumerState<SettingsPage> {
+  bool _modelsDownloaded = false;
+  bool _isDownloading = false;
+  DownloadProgress _downloadProgress = DownloadProgress.zero();
+  StreamSubscription<DownloadProgress>? _progressSubscription;
+  String _downloadStatus = '';
+  QuranApiConfig? _quranApiConfig;
+  final QuranUserSessionService _userSessionService =
+      QuranUserSessionService.instance;
+  QuranUserSession? _userSession;
+  String? _userAuthError;
+  bool _isSyncingAccount = false;
+  double _ttsGain = 1.8;
+  double _playbackVolume = 1.0;
+  String _ttsVoiceId = 'F1';
+  List<TtsVoiceOption> _availableTtsVoices = const <TtsVoiceOption>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkModels();
+    _loadQuranApiConfig();
+    _loadUserAuthState();
+    _loadAudioSettings();
+  }
+
+  @override
+  void dispose() {
+    _progressSubscription?.cancel();
+    _userSessionService.removeListener(_handleUserSessionChanged);
+    super.dispose();
+  }
+
+  Future<void> _checkModels() async {
+    final mm = ModelManager.instance;
+    await mm.initialize();
+    final downloaded = await mm.areAllModelsDownloaded();
+    if (mounted) {
+      setState(() => _modelsDownloaded = downloaded);
+    }
+  }
+
+  Future<void> _loadQuranApiConfig() async {
+    final service = QuranApiConfigService.instance;
+    await service.initialize();
+    if (mounted) {
+      setState(() {
+        _quranApiConfig = service.config;
+      });
+    }
+  }
+
+  Future<void> _loadUserAuthState() async {
+    await _userSessionService.initialize();
+    _userSessionService.removeListener(_handleUserSessionChanged);
+    _userSessionService.addListener(_handleUserSessionChanged);
+    _handleUserSessionChanged();
+  }
+
+  void _handleUserSessionChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _userSession = _userSessionService.session;
+      _userAuthError = _userSessionService.lastAuthError;
+    });
+  }
+
+  Future<void> _startUserSignIn() async {
+    await _userSessionService.startSignIn();
+    _handleUserSessionChanged();
+  }
+
+  Future<void> _signOutUser() async {
+    await _userSessionService.signOut();
+    _handleUserSessionChanged();
+  }
+
+  Future<void> _syncAccountNow() async {
+    if (_isSyncingAccount) {
+      return;
+    }
+
+    setState(() {
+      _isSyncingAccount = true;
+    });
+
+    try {
+      await QuranUserSyncService.instance.syncNow();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncingAccount = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadAudioSettings() async {
+    await VoiceService.instance.initializeAudioSettings();
+    final voices = await VoiceService.instance.listAvailableTtsVoices();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _ttsGain = VoiceService.instance.ttsGain;
+      _playbackVolume = VoiceService.instance.playbackVolume;
+      _ttsVoiceId = VoiceService.instance.ttsVoiceId;
+      _availableTtsVoices = voices;
+    });
+  }
+
+  Future<void> _downloadModels() async {
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = DownloadProgress.zero();
+      _downloadStatus = 'Starting downloads...';
+    });
+
+    final mm = ModelManager.instance;
+    await mm.initialize();
+
+    await _progressSubscription?.cancel();
+    _progressSubscription = mm.downloadProgress.listen((progress) {
+      if (mounted) {
+        setState(() {
+          _downloadProgress = progress;
+          _downloadStatus = _formatDownloadStatus(progress);
+        });
+      }
+    });
+
+    try {
+      await mm.downloadAllModels();
+      await mm.completeOnboarding();
+      await _progressSubscription?.cancel();
+      await _loadAudioSettings();
+
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _modelsDownloaded = true;
+          _downloadProgress = const DownloadProgress(
+            bytesReceived: 0,
+            totalBytes: 0,
+            progress: 1,
+            currentFileProgress: 1,
+          );
+          _downloadStatus = 'All models downloaded!';
+        });
+      }
+    } catch (_) {
+      await _progressSubscription?.cancel();
+      rethrow;
+    }
+  }
+
+  String _formatDownloadStatus(DownloadProgress progress) {
+    final percent = (progress.progress * 100).round();
+    final model = progress.modelName;
+    final file = progress.currentFile;
+
+    if (model == null || file == null) {
+      return 'Downloading models... $percent%';
+    }
+
+    return '$model • $file • $percent%';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Settings'),
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.textPrimary,
+        elevation: 0,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _sectionHeader('AI Models'),
+          _settingCard(
+            icon: Icons.download_rounded,
+            title: 'On-Device Models',
+            subtitle: _modelsDownloaded
+                ? 'All models downloaded'
+                : 'Download models for offline use',
+            trailing: _isDownloading
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      value: _downloadProgress.progress > 0
+                          ? _downloadProgress.progress
+                          : null,
+                      color: AppColors.gold,
+                    ),
+                  )
+                : _modelsDownloaded
+                    ? const Icon(
+                        Icons.check_circle,
+                        color: Colors.green,
+                        size: 24,
+                      )
+                    : TextButton(
+                        onPressed: _downloadModels,
+                        child: const Text(
+                          'Download',
+                          style: TextStyle(color: AppColors.gold),
+                        ),
+                      ),
+          ),
+          if (_downloadStatus.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _downloadStatus,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  if (_isDownloading) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        minHeight: 8,
+                        value: _downloadProgress.progress,
+                        backgroundColor: AppColors.card,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          AppColors.gold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${(_downloadProgress.progress * 100).round()}% complete',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          const SizedBox(height: 24),
+          _sectionHeader('Audio'),
+          _audioBoostCard(),
+          const SizedBox(height: 24),
+          _sectionHeader('Quran Account'),
+          _quranAccountCard(),
+          const SizedBox(height: 24),
+          _sectionHeader('About'),
+          _settingCard(
+            icon: Icons.info_outline,
+            title: 'Noor AI',
+            subtitle: 'Version 1.0.0',
+          ),
+          _settingCard(
+            icon: Icons.menu_book_rounded,
+            title: 'Quran Data',
+            subtitle: _quranApiConfig?.providerLabel ?? 'Loading provider...',
+          ),
+          _settingCard(
+            icon: Icons.psychology_outlined,
+            title: 'AI Engine',
+            subtitle: 'MNN + Qwen3.5 + Whisper on-device',
+          ),
+          const SizedBox(height: 24),
+          _sectionHeader('Acknowledgements'),
+          _settingCard(
+            icon: Icons.favorite_outline,
+            title: 'Open Source',
+            subtitle: 'Built with Flutter, MNN, Edgemind Core',
+          ),
+          const SizedBox(height: 40),
+          Center(
+            child: Text(
+              'Made with devotion',
+              style: TextStyle(
+                color: AppColors.textSecondary.withValues(alpha: 0.4),
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              '﷽',
+              style: TextStyle(
+                color: AppColors.gold.withValues(alpha: 0.5),
+                fontSize: 20,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quranAccountCard() {
+    final session = _userSession;
+    final isSignedIn = session?.accessToken.isNotEmpty ?? false;
+    final isBusy = _userSessionService.isBusy;
+    final environment = _userSessionService.config.environmentLabel;
+    final subtitle = isSignedIn
+        ? 'Signed in to $environment. Quran Foundation bookmarks, reading progress, and streak sync are enabled.'
+        : (_userAuthError?.trim().isNotEmpty == true
+            ? _userAuthError!
+            : 'Sign in with Quran Foundation OAuth to sync bookmarks, reading progress, and streaks.');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  Icons.account_circle_outlined,
+                  color: AppColors.gold.withValues(alpha: 0.6),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Quran Foundation Account',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (!isSignedIn)
+                FilledButton(
+                  onPressed: isBusy ? null : _startUserSignIn,
+                  child: isBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Sign In'),
+                ),
+              if (isSignedIn)
+                OutlinedButton(
+                  onPressed: isBusy || _isSyncingAccount ? null : _syncAccountNow,
+                  child: _isSyncingAccount
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Sync Now'),
+                ),
+              if (isSignedIn)
+                TextButton(
+                  onPressed: isBusy ? null : _signOutUser,
+                  child: const Text('Sign Out'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.gold,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _settingCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Widget? trailing,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(
+              icon,
+              color: AppColors.gold.withValues(alpha: 0.6),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.7),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _audioBoostCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  Icons.volume_up_rounded,
+                  color: AppColors.gold.withValues(alpha: 0.6),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Audio Boost',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Boost spoken answers and keep recitation playback at the device speaker volume.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_availableTtsVoices.isNotEmpty) ...[
+            Text(
+              'Spoken answer voice',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _availableTtsVoices.any(
+                (voice) => voice.id == _ttsVoiceId,
+              )
+                  ? _ttsVoiceId
+                  : _availableTtsVoices.first.id,
+              dropdownColor: AppColors.card,
+              decoration: const InputDecoration(
+                labelText: 'Voice style',
+              ),
+              items: _availableTtsVoices
+                  .map(
+                    (voice) => DropdownMenuItem<String>(
+                      value: voice.id,
+                      child: Text('${voice.label} (${voice.id})'),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) async {
+                if (value == null) {
+                  return;
+                }
+
+                setState(() {
+                  _ttsVoiceId = value;
+                });
+                await VoiceService.instance.setTtsVoice(value);
+              },
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _availableTtsVoices
+                      .firstWhere(
+                        (voice) => voice.id == _ttsVoiceId,
+                        orElse: () => _availableTtsVoices.first,
+                      )
+                      .subtitle +
+                  (_availableTtsVoices.length < 4
+                      ? ' Download the latest models to unlock more voices.'
+                      : ''),
+              style: TextStyle(
+                color: AppColors.textSecondary.withValues(alpha: 0.7),
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Text(
+            'Spoken answer boost ${(100 * _ttsGain).round()}%',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Slider(
+            value: _ttsGain,
+            min: 1.0,
+            max: 2.5,
+            divisions: 15,
+            label: '${(100 * _ttsGain).round()}%',
+            activeColor: AppColors.gold,
+            onChanged: (value) {
+              setState(() {
+                _ttsGain = value;
+              });
+            },
+            onChangeEnd: (value) async {
+              await VoiceService.instance.setAudioBoost(
+                ttsGain: value,
+                playbackVolume: _playbackVolume,
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Recitation playback ${(100 * _playbackVolume).round()}%',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Slider(
+            value: _playbackVolume,
+            min: 0.6,
+            max: 1.0,
+            divisions: 8,
+            label: '${(100 * _playbackVolume).round()}%',
+            activeColor: AppColors.gold,
+            onChanged: (value) {
+              setState(() {
+                _playbackVolume = value;
+              });
+            },
+            onChangeEnd: (value) async {
+              await VoiceService.instance.setAudioBoost(
+                ttsGain: _ttsGain,
+                playbackVolume: value,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+}
