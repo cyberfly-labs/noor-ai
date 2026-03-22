@@ -6,11 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/services/database_service.dart';
+import 'core/services/daily_ayah_widget_service.dart';
 import 'core/services/llm_service.dart';
+import 'core/services/local_quran_asset_service.dart';
 import 'core/services/model_manager.dart';
 import 'core/services/quran_user_session_service.dart';
-import 'core/services/vector_store_service.dart' show VectorStoreService, kEmotionalVerses;
-import 'core/services/voice_service.dart';
+import 'core/services/vector_store_service.dart' show VectorStoreService;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +25,7 @@ Future<void> main() async {
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF0A0A0A),
+    systemNavigationBarColor: Color(0xFF060B11),
   ));
 
   runApp(const ProviderScope(child: NoorAiApp()));
@@ -35,7 +36,20 @@ Future<void> main() async {
 }
 
 Future<void> _warmUpCoreServices() async {
-  VectorStoreService.instance.seedEmotionalVerses(kEmotionalVerses);
+  unawaited(_runStartupTask('vector store init', () async {
+    await VectorStoreService.instance.initialize();
+    if (await VectorStoreService.instance.hasReadyNativeCorpus()) {
+      return 'bundled-native-corpus-ready';
+    }
+    return VectorStoreService.instance.usesNativeZvec
+        ? 'native-runtime-ready-without-bundled-db'
+        : 'in-memory-fallback-ready';
+  }));
+
+  unawaited(_runStartupTask(
+    'local Quran asset init',
+    LocalQuranAssetService.instance.initialize,
+  ));
 
   unawaited(_runStartupTask(
     'database init',
@@ -53,8 +67,14 @@ Future<void> _warmUpCoreServices() async {
       const Duration(seconds: 5),
     ),
   ));
-  unawaited(_runStartupTask('LLM prewarm', LlmService.instance.initialize));
-  unawaited(_runStartupTask('ASR prewarm', VoiceService.instance.initAsr));
+  unawaited(_runStartupTask(
+    'LLM engine init',
+    () => LlmService.instance.initialize(),
+  ));
+  unawaited(_runStartupTask(
+    'daily ayah widget sync',
+    DailyAyahWidgetService.instance.syncTodayAyahWidget,
+  ));
 }
 
 Future<void> _runStartupTask(

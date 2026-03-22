@@ -39,6 +39,7 @@ class VoiceService {
   static const double _maxTtsGain = 2.5;
   static const double _minPlaybackVolume = 0.6;
   static const double _maxPlaybackVolume = 1.0;
+  static const int _maxTtsChunkLength = 220;
   static const List<TtsVoiceOption> _supportedTtsVoices = <TtsVoiceOption>[
     TtsVoiceOption(
       id: 'F1',
@@ -69,6 +70,7 @@ class VoiceService {
   bool _asrReady = false;
   bool _ttsReady = false;
   bool _stopPlaybackRequested = false;
+  int _playbackSessionId = 0;
   double _ttsGain = _defaultTtsGain;
   double _playbackVolume = _defaultPlaybackVolume;
   String _ttsVoiceId = _defaultTtsVoiceId;
@@ -366,50 +368,80 @@ class VoiceService {
 
   /// Speak text using TTS with audio playback
   Future<void> speak(String text) async {
-    if (text.trim().isEmpty) {
+    final spokenText = _normalizeSpokenText(text);
+    if (spokenText.isEmpty) {
       return;
     }
 
     await initializeAudioSettings();
     await _preparePlayback();
+    final sessionId = ++_playbackSessionId;
     _stopPlaybackRequested = false;
 
     if (!_ttsReady) {
       final ready = await initTts();
-      if (!ready) {
+      if (!ready || sessionId != _playbackSessionId) {
         debugPrint('VoiceService: Skipping TTS playback because initialization failed');
         return;
       }
     }
 
-    // Split into sentences for pipelined playback
-    final sentences = _splitSentences(text);
-    if (sentences.isEmpty) return;
+    final speechChunks = _buildSpeechChunks(spokenText);
+    if (speechChunks.isEmpty) {
+      return;
+    }
+
+    final pendingChunks = List<String>.from(speechChunks);
 
     _playbackStateController.add(true);
 
     try {
       await _player.stop();
 
-      for (final sentence in sentences) {
-        if (_stopPlaybackRequested) {
+      for (var i = 0; i < pendingChunks.length; i += 1) {
+        final chunk = pendingChunks[i];
+        if (_stopPlaybackRequested || sessionId != _playbackSessionId) {
           break;
         }
 
-        final wavPath = await synthesize(sentence);
-        if (wavPath == null) continue;
+        final wavPath = await synthesize(chunk);
+        if (wavPath == null || sessionId != _playbackSessionId) {
+          final splitChunks = _splitFailedSynthesisChunk(chunk);
+          if (splitChunks != null) {
+            pendingChunks
+              ..removeAt(i)
+              ..insertAll(i, splitChunks);
+            i -= 1;
+            continue;
+          }
+          debugPrint('VoiceService: Skipping unsynthesizable chunk (${chunk.length} chars)');
+          continue;
+        }
 
-        final file = File(wavPath);
-        if (!await file.exists()) continue;
+        if (!await _waitForWavFile(wavPath) || sessionId != _playbackSessionId) {
+          continue;
+        }
 
-        await _player.setFilePath(wavPath);
-        await _player.setVolume(_playbackVolume);
-        await _player.play();
-        await _waitForPlaybackEnd();
+        try {
+          // Reset player state from completed → idle before loading the next
+          // chunk; avoids just_audio Android/iOS state-machine quirks.
+          await _player.stop();
+          if (sessionId != _playbackSessionId) break;
+
+          await _player.setFilePath(wavPath);
+          await _player.setVolume(_playbackVolume);
+          await _player.play();
+          await _waitForPlaybackEnd(sessionId);
+        } catch (e) {
+          debugPrint('VoiceService: chunk playback error: $e');
+          // continue to the next chunk rather than aborting the whole response
+        }
       }
     } finally {
-      await _finishPlayback();
-      _playbackStateController.add(false);
+      if (sessionId == _playbackSessionId) {
+        await _finishPlayback();
+        _playbackStateController.add(false);
+      }
     }
   }
 
@@ -417,20 +449,26 @@ class VoiceService {
   Future<void> playUrl(String url) async {
     await initializeAudioSettings();
     await _preparePlayback();
+    final sessionId = ++_playbackSessionId;
     _stopPlaybackRequested = false;
 
     _playbackStateController.add(true);
 
     try {
       await _player.stop();
+      if (sessionId != _playbackSessionId) {
+        return;
+      }
       await _player.setUrl(url);
       await _player.setVolume(_playbackVolume);
       await _player.play();
 
-      await _waitForPlaybackEnd();
+      await _waitForPlaybackEnd(sessionId);
     } finally {
-      await _finishPlayback();
-      _playbackStateController.add(false);
+      if (sessionId == _playbackSessionId) {
+        await _finishPlayback();
+        _playbackStateController.add(false);
+      }
     }
   }
 
@@ -447,6 +485,7 @@ class VoiceService {
 
     await initializeAudioSettings();
     await _preparePlayback();
+    final sessionId = ++_playbackSessionId;
     _stopPlaybackRequested = false;
 
     _playbackStateController.add(true);
@@ -455,34 +494,212 @@ class VoiceService {
       await _player.stop();
 
       for (final url in queue) {
-        if (_stopPlaybackRequested) {
+        if (_stopPlaybackRequested || sessionId != _playbackSessionId) {
           break;
         }
 
         await _player.setUrl(url);
         await _player.setVolume(_playbackVolume);
         await _player.play();
-        await _waitForPlaybackEnd();
+        await _waitForPlaybackEnd(sessionId);
       }
     } finally {
-      await _finishPlayback();
-      _playbackStateController.add(false);
+      if (sessionId == _playbackSessionId) {
+        await _finishPlayback();
+        _playbackStateController.add(false);
+      }
     }
   }
 
   /// Stop any ongoing playback
   Future<void> stopPlayback() async {
     _stopPlaybackRequested = true;
+    _playbackSessionId += 1;
     await _player.stop();
     await _finishPlayback();
     _playbackStateController.add(false);
   }
 
-  List<String> _splitSentences(String text) {
-    return text
-        .split(RegExp(r'(?<=[.!?])\s+'))
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
+  String _normalizeSpokenText(String text) {
+    var normalized = text
+        // Strip emojis (will trip the on-device TTS engine)
+        .replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}]', unicode: true), '')
+        .replaceAll(RegExp(r'[\u2600-\u27BF]'), '');
+
+    // Use replaceAllMapped for capture-group substitutions. String.replaceAll
+    // does not expand $1-style groups and would leak literal "$1" into speech.
+    normalized = normalized
+        // Strip markdown headers (# / ## / ###)
+        .replaceAllMapped(
+          RegExp(r'(^|\n)\s*#{1,6}\s*'),
+          (m) => m.group(1) ?? '',
+        )
+        // Strip markdown bold (**text** / __text__)
+        .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1) ?? '')
+        .replaceAllMapped(RegExp(r'__(.+?)__'), (m) => m.group(1) ?? '')
+        // Strip markdown italic (*text* / _text_)
+        .replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1) ?? '')
+        .replaceAllMapped(RegExp(r'_(.+?)_'), (m) => m.group(1) ?? '')
+        // Strip any remaining lone * or _ markers
+        .replaceAll(RegExp(r'[*_]+'), '')
+        // Strip inline code (`code`)
+        .replaceAll(RegExp(r'`+[^`]*`+'), '')
+        // Strip markdown links [text](url) -> text
+        .replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^)]*\)'), (m) => m.group(1) ?? '')
+        // Strip bare URLs
+        .replaceAll(RegExp(r'https?://\S+'), '')
+        // Strip markdown blockquotes (> )
+        .replaceAllMapped(
+          RegExp(r'(^|\n)\s*>\s*'),
+          (m) => m.group(1) ?? '',
+        )
+        // Strip horizontal rules (---, ***, ___)
+        .replaceAllMapped(
+          RegExp(r'(^|\n)\s*[-*_]{3,}\s*(\n|$)'),
+          (m) => m.group(1) ?? '',
+        )
+        // Strip numbered list markers (1. 2. etc.)
+        .replaceAllMapped(
+          RegExp(r'(^|\n)\s*\d+\.\s*'),
+          (m) => m.group(1) ?? '',
+        )
+        // Strip bullet list markers (- / * / +)
+        .replaceAllMapped(
+          RegExp(r'(^|\n)\s*[-*+]\s+'),
+          (m) => m.group(1) ?? '',
+        )
+        // Strip [QURAN], [TAFSIR], [HADITH] block labels
+        .replaceAll(RegExp(r'\[(QURAN|TAFSIR|HADITH)\]\s*', caseSensitive: false), '')
+        // Collapse whitespace
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    return normalized;
+  }
+
+  List<String> _buildSpeechChunks(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return const <String>[];
+    }
+
+    if (normalized.length <= _maxTtsChunkLength) {
+      return <String>[normalized];
+    }
+
+    // Split only on sentence-ending punctuation — NOT on colons, to avoid
+    // creating micro-chunks from verse refs like "2:153" or labels like "Quran:".
+    final sentences = normalized
+        .split(RegExp(r'(?<=[.!?;])\s+'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+
+    final chunks = <String>[];
+    final buffer = StringBuffer();
+
+    void flush() {
+      final chunk = buffer.toString().trim();
+      if (chunk.isNotEmpty) {
+        chunks.add(chunk);
+      }
+      buffer.clear();
+    }
+
+    for (final sentence in sentences) {
+      if (sentence.length > _maxTtsChunkLength) {
+        if (buffer.isNotEmpty) {
+          flush();
+        }
+        chunks.addAll(_splitLongChunk(sentence));
+        continue;
+      }
+
+      final separator = buffer.isEmpty ? '' : ' ';
+      final candidateLength = buffer.length + separator.length + sentence.length;
+      if (candidateLength > _maxTtsChunkLength && buffer.isNotEmpty) {
+        flush();
+      }
+
+      if (buffer.isNotEmpty) {
+        buffer.write(' ');
+      }
+      buffer.write(sentence);
+    }
+
+    if (buffer.isNotEmpty) {
+      flush();
+    }
+
+    return chunks;
+  }
+
+  List<String> _splitLongChunk(String text) {
+    final words = text.split(RegExp(r'\s+'));
+    final chunks = <String>[];
+    final buffer = StringBuffer();
+
+    for (final word in words) {
+      if (word.isEmpty) {
+        continue;
+      }
+
+      final separator = buffer.isEmpty ? '' : ' ';
+      final candidateLength = buffer.length + separator.length + word.length;
+      if (candidateLength > _maxTtsChunkLength && buffer.isNotEmpty) {
+        chunks.add(buffer.toString().trim());
+        buffer.clear();
+      }
+
+      if (buffer.isNotEmpty) {
+        buffer.write(' ');
+      }
+      buffer.write(word);
+    }
+
+    final tail = buffer.toString().trim();
+    if (tail.isNotEmpty) {
+      chunks.add(tail);
+    }
+
+    return chunks;
+  }
+
+  List<String>? _splitFailedSynthesisChunk(String text) {
+    final trimmed = text.trim();
+    if (trimmed.length < 80) {
+      return null;
+    }
+
+    final mid = trimmed.length ~/ 2;
+    var splitAt = trimmed.lastIndexOf(' ', mid);
+    if (splitAt < 24) {
+      splitAt = trimmed.indexOf(' ', mid);
+    }
+    if (splitAt < 24 || splitAt >= trimmed.length - 24) {
+      return null;
+    }
+
+    final left = trimmed.substring(0, splitAt).trim();
+    final right = trimmed.substring(splitAt + 1).trim();
+    if (left.isEmpty || right.isEmpty) {
+      return null;
+    }
+    return <String>[left, right];
+  }
+
+  Future<bool> _waitForWavFile(String path) async {
+    final file = File(path);
+    for (var attempt = 0; attempt < 4; attempt += 1) {
+      if (await file.exists()) {
+        final len = await file.length();
+        if (len > 0) {
+          return true;
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    return false;
   }
 
   void dispose() {
@@ -502,11 +719,30 @@ class VoiceService {
     await session.setActive(false);
   }
 
-  Future<void> _waitForPlaybackEnd() {
-    return _player.playerStateStream.firstWhere(
-      (state) => !state.playing &&
-          (state.processingState == ProcessingState.completed ||
-              state.processingState == ProcessingState.idle),
+  Future<void> _waitForPlaybackEnd(int sessionId) async {
+    // Phase 1: confirm play() actually started before we wait for it to end.
+    // playerStateStream is a BehaviorSubject that replays the last value, so
+    // after chunk N completes (state = completed), subscribing for chunk N+1
+    // would immediately match that stale "completed" and return early.
+    // Waiting for playing==true first prevents that race condition.
+    final started = await _player.playerStateStream
+        .firstWhere(
+          (s) => sessionId != _playbackSessionId || s.playing,
+        )
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => _player.playerState,
+        );
+
+    if (sessionId != _playbackSessionId || !started.playing) return;
+
+    // Phase 2: playback has started — wait for it to finish.
+    await _player.playerStateStream.firstWhere(
+      (s) =>
+          sessionId != _playbackSessionId ||
+          (!s.playing &&
+              (s.processingState == ProcessingState.completed ||
+                  s.processingState == ProcessingState.idle)),
     );
   }
 

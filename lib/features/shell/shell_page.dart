@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -34,62 +36,132 @@ class _ShellPageState extends State<ShellPage> {
 
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border(
-            top: BorderSide(color: AppColors.gold.withValues(alpha: 0.15), width: 0.5),
+      extendBody: true,
+      bottomNavigationBar: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface.withValues(alpha: 0.85),
+              border: Border(
+                top: BorderSide(color: AppColors.divider.withValues(alpha: 0.6), width: 0.5),
+              ),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(_routes.length, (index) {
+                    return _NavItem(
+                      icon: _iconFor(index, false),
+                      activeIcon: _iconFor(index, true),
+                      label: _labelFor(index),
+                      isSelected: _currentIndex == index,
+                      onTap: () {
+                        if (index != _currentIndex) {
+                          setState(() => _currentIndex = index);
+                          context.go(_routes[index]);
+                        }
+                      },
+                    );
+                  }),
+                ),
+              ),
+            ),
           ),
         ),
-        child: SafeArea(
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (index) {
-              if (index != _currentIndex) {
-                setState(() => _currentIndex = index);
-                context.go(_routes[index]);
-              }
-            },
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            selectedItemColor: AppColors.gold,
-            unselectedItemColor: AppColors.textMuted,
-            type: BottomNavigationBarType.fixed,
-            selectedFontSize: 11,
-            unselectedFontSize: 10,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.mic_rounded),
-                activeIcon: Icon(Icons.mic_rounded),
-                label: 'Home',
+      ),
+    );
+  }
+
+  IconData _iconFor(int index, bool active) {
+    switch (index) {
+      case 0:
+        return active ? Icons.mic_rounded : Icons.mic_none_rounded;
+      case 1:
+        return active ? Icons.menu_book_rounded : Icons.menu_book_outlined;
+      case 2:
+        return active ? Icons.chat_rounded : Icons.chat_outlined;
+      case 3:
+        return active ? Icons.auto_stories_rounded : Icons.auto_stories_outlined;
+      case 4:
+        return active ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded;
+      case 5:
+        return active ? Icons.settings_rounded : Icons.settings_outlined;
+      default:
+        return Icons.circle;
+    }
+  }
+
+  String _labelFor(int index) {
+    switch (index) {
+      case 0:
+        return 'Ask';
+      case 1:
+        return 'Quran';
+      case 2:
+        return 'Chat';
+      case 3:
+        return 'Daily';
+      case 4:
+        return 'Saved';
+      case 5:
+        return 'Settings';
+      default:
+        return '';
+    }
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: isSelected
+            ? BoxDecoration(
+                color: AppColors.gold.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+              )
+            : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : icon,
+              size: 22,
+              color: isSelected ? AppColors.gold : AppColors.textMuted,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? AppColors.gold : AppColors.textMuted,
               ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.menu_book_outlined),
-                activeIcon: Icon(Icons.menu_book_rounded),
-                label: 'Quran',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.chat_bubble_outline_rounded),
-                activeIcon: Icon(Icons.chat_bubble_rounded),
-                label: 'Chat',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.auto_stories_outlined),
-                activeIcon: Icon(Icons.auto_stories_rounded),
-                label: 'Daily',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.bookmark_outline_rounded),
-                activeIcon: Icon(Icons.bookmark_rounded),
-                label: 'Saved',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.settings_outlined),
-                activeIcon: Icon(Icons.settings_rounded),
-                label: 'Settings',
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

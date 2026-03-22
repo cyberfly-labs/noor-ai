@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,9 +11,12 @@ import '../../../core/models/verse.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/llm_service.dart';
 import '../../../core/services/quran_api_service.dart';
+import '../../../core/services/quran_rag_service.dart';
 import '../../../core/services/vector_store_service.dart';
 import '../../../core/services/voice_service.dart';
+import '../../../core/utils/asr_normalization_pipeline.dart';
 import '../../../core/utils/intent_parser.dart';
+import '../../../core/utils/perf_trace.dart';
 import '../../../core/utils/prompt_templates.dart';
 
 const _uuid = Uuid();
@@ -70,21 +72,20 @@ class HomeState {
 }
 
 class HomeNotifier extends StateNotifier<HomeState> {
-  HomeNotifier() : super(const HomeState()) {
-    unawaited(_llmService.initialize());
-  }
+  HomeNotifier() : super(const HomeState());
 
   final _voiceService = VoiceService.instance;
   final _llmService = LlmService.instance;
   final _quranApi = QuranApiService.instance;
+  final _quranRag = QuranRagService.instance;
   final _db = DatabaseService.instance;
   final _intentParser = IntentParser.instance;
   final _vectorStore = VectorStoreService.instance;
 
   String? _recordingPath;
   int _speechSessionId = 0;
-  final Map<String, _VoiceNormalizationResult> _voiceNormalizationCache =
-      <String, _VoiceNormalizationResult>{};
+  final Map<String, AsrNormalizationResult> _normalizationCache =
+      <String, AsrNormalizationResult>{};
 
   /// Start/stop voice recording toggle
   Future<void> toggleVoice() async {
@@ -135,12 +136,30 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return;
     }
 
-    final normalizedCommand = await _normalizeVoiceCommand(transcription);
-    final normalizedIntent = _intentFromNormalizedCommand(normalizedCommand);
+    // Run the offline normalization pipeline (with LLM rewrite on low confidence)
+    final cacheKey = transcription.toLowerCase();
+    var normalized = _normalizationCache[cacheKey];
+    if (normalized == null) {
+      normalized = AsrNormalizationPipeline.instance.process(transcription);
+      if (normalized.needsLlmFallback) {
+        final rewritePrompt =
+            PromptTemplates.rewriteAsrTranscript(transcript: transcription);
+        final buffer = StringBuffer();
+        await for (final token in _llmService.generate(rewritePrompt)) {
+          buffer.write(token);
+        }
+        final rewritten = buffer.toString().trim();
+        if (rewritten.isNotEmpty) {
+          normalized = AsrNormalizationPipeline.instance.process(rewritten);
+        }
+      }
+      _normalizationCache[cacheKey] = normalized;
+    }
 
-    state = state.copyWith(transcription: normalizedCommand.cleanText);
+    final normalizedIntent = normalized.toIntent();
+    state = state.copyWith(transcription: normalized.cleanText);
     await processTextInput(
-      normalizedCommand.cleanText,
+      normalized.cleanText,
       normalizedIntent: normalizedIntent,
     );
   }
@@ -150,6 +169,13 @@ class HomeNotifier extends StateNotifier<HomeState> {
     String text, {
     Intent? normalizedIntent,
   }) async {
+    final traceTag = PerfTrace.nextTag('home.processTextInput');
+    final totalSw = PerfTrace.start(traceTag, 'request');
+
+    _speechSessionId += 1;
+    _llmService.cancelGeneration();
+    await _voiceService.stopPlayback();
+
     state = state.copyWith(
       voiceState: VoiceState.processing,
       transcription: text,
@@ -158,17 +184,22 @@ class HomeNotifier extends StateNotifier<HomeState> {
       currentVerse: null,
       citations: const <GroundingCitation>[],
     );
+    PerfTrace.mark(traceTag, 'ui_reset', totalSw);
 
     // Save user message
+    final saveUserSw = Stopwatch()..start();
     await _db.insertMessage(ChatMessage(
       id: _uuid.v4(),
       content: text,
       role: 'user',
       createdAt: DateTime.now(),
     ));
+    PerfTrace.mark(traceTag, 'save_user_message', saveUserSw);
 
     // Parse intent
+    final parseSw = Stopwatch()..start();
     final intent = normalizedIntent ?? _intentParser.parse(text);
+    PerfTrace.mark(traceTag, 'intent_parse', parseSw);
 
     try {
       switch (intent.type) {
@@ -194,354 +225,48 @@ class HomeNotifier extends StateNotifier<HomeState> {
           await _handleGeneralQuestion(intent);
           break;
       }
+      PerfTrace.end(traceTag, 'request_success', totalSw);
     } catch (e) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
         error: 'Something went wrong: $e',
         citations: const <GroundingCitation>[],
       );
+      PerfTrace.end(traceTag, 'request_error', totalSw);
     }
-  }
-
-  Future<_VoiceNormalizationResult> _normalizeVoiceCommand(
-    String transcription,
-  ) async {
-    final locallyCorrected = _applyIslamicTermCorrections(transcription).trim();
-    if (locallyCorrected.isEmpty) {
-      return _fallbackVoiceNormalization(transcription);
-    }
-
-    final cacheKey = locallyCorrected.toLowerCase();
-    final cached = _voiceNormalizationCache[cacheKey];
-    if (cached != null) {
-      return cached;
-    }
-
-    try {
-      unawaited(_llmService.initialize());
-      final rawResponse = await _llmService
-          .generateComplete(
-            PromptTemplates.normalizeVoiceCommand(userInput: locallyCorrected),
-          )
-          .timeout(const Duration(seconds: 8));
-      final parsed = _safeParseNormalizedCommand(
-        rawResponse,
-        fallbackInput: locallyCorrected,
-      );
-      _voiceNormalizationCache[cacheKey] = parsed;
-      debugPrint(
-        'ASR normalize: "$transcription" -> intent=${parsed.intent}, surah=${parsed.surahNumber}, ayah=${parsed.ayahNumber}, clean="${parsed.cleanText}"',
-      );
-      return parsed;
-    } catch (error) {
-      debugPrint('ASR normalize skipped: $error');
-      final fallback = _fallbackVoiceNormalization(locallyCorrected);
-      _voiceNormalizationCache[cacheKey] = fallback;
-      return fallback;
-    }
-  }
-
-  Intent _intentFromNormalizedCommand(_VoiceNormalizationResult result) {
-    final fallbackIntent = _intentParser.parse(result.cleanText);
-    final type = _intentTypeFromLabel(result.intent);
-    if (type == null) {
-      return fallbackIntent;
-    }
-
-    final requiresSurahOnly =
-        type == IntentType.explainSurah || type == IntentType.playAudio;
-    final requiresVerseReference =
-        type == IntentType.explainAyah ||
-        type == IntentType.translation ||
-        type == IntentType.tafsir;
-
-    if (requiresSurahOnly && result.surahNumber == null) {
-      return fallbackIntent;
-    }
-
-    if (requiresVerseReference &&
-        (result.surahNumber == null || result.ayahNumber == null)) {
-      return fallbackIntent;
-    }
-
-    return Intent(
-      type: type,
-      surahNumber: result.surahNumber,
-      ayahNumber: result.ayahNumber,
-      rawText: result.cleanText,
-    );
-  }
-
-  IntentType? _intentTypeFromLabel(String label) {
-    switch (label.trim().toLowerCase()) {
-      case 'explain_surah':
-        return IntentType.explainSurah;
-      case 'explain_ayah':
-        return IntentType.explainAyah;
-      case 'play_audio':
-        return IntentType.playAudio;
-      case 'translation':
-        return IntentType.translation;
-      case 'tafsir':
-        return IntentType.tafsir;
-      case 'emotional_guidance':
-        return IntentType.emotionalGuidance;
-      case 'ask_general_question':
-        return IntentType.askGeneralQuestion;
-      default:
-        return null;
-    }
-  }
-
-  _VoiceNormalizationResult _safeParseNormalizedCommand(
-    String text, {
-    required String fallbackInput,
-  }) {
-    try {
-      final jsonStart = text.indexOf('{');
-      final jsonEnd = text.lastIndexOf('}');
-      if (jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart) {
-        return _fallbackVoiceNormalization(fallbackInput);
-      }
-
-      final jsonString = text.substring(jsonStart, jsonEnd + 1);
-      final decoded = jsonDecode(jsonString);
-      if (decoded is! Map) {
-        return _fallbackVoiceNormalization(fallbackInput);
-      }
-
-      final map = decoded.cast<String, dynamic>();
-      final cleanText = _normalizedCleanText(
-        map['clean_text'] as String?,
-        fallbackInput,
-      );
-      final surahName = _normalizedNullableString(map['surah']);
-      final surahNumber = _resolveNormalizedSurah(
-        surahName,
-        cleanText: cleanText,
-        fallbackInput: fallbackInput,
-      );
-
-      return _VoiceNormalizationResult(
-        intent: _normalizedNullableString(map['intent']) ?? 'unknown',
-        surahName: surahName,
-        surahNumber: surahNumber,
-        ayahNumber: _normalizedAyah(map['ayah']),
-        cleanText: cleanText,
-      );
-    } catch (_) {
-      return _fallbackVoiceNormalization(fallbackInput);
-    }
-  }
-
-  _VoiceNormalizationResult _fallbackVoiceNormalization(String input) {
-    final cleanText = _normalizedCleanText(null, input);
-    return _VoiceNormalizationResult(
-      intent: 'unknown',
-      surahName: null,
-      surahNumber: _resolveNormalizedSurah(
-        null,
-        cleanText: cleanText,
-        fallbackInput: input,
-      ),
-      ayahNumber: null,
-      cleanText: cleanText,
-    );
-  }
-
-  String _normalizedCleanText(String? cleanText, String fallbackInput) {
-    final candidate = cleanText?.trim();
-    if (candidate != null && candidate.isNotEmpty) {
-      return _applyIslamicTermCorrections(candidate).trim();
-    }
-    return _applyIslamicTermCorrections(fallbackInput).trim();
-  }
-
-  String? _normalizedNullableString(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-
-    final text = value.toString().trim();
-    if (text.isEmpty || text.toLowerCase() == 'null') {
-      return null;
-    }
-    return text;
-  }
-
-  int? _normalizedAyah(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-    if (value is num) {
-      final ayah = value.toInt();
-      return ayah > 0 ? ayah : null;
-    }
-    final parsed = int.tryParse(value.toString().trim());
-    if (parsed == null || parsed <= 0) {
-      return null;
-    }
-    return parsed;
-  }
-
-  int? _resolveNormalizedSurah(
-    String? surahName, {
-    required String cleanText,
-    required String fallbackInput,
-  }) {
-    final direct = surahName == null ? null : SurahLookup.findSurahNumber(surahName);
-    if (direct != null) {
-      return direct;
-    }
-
-    final fromCleanText = SurahLookup.findSurahNumber(cleanText);
-    if (fromCleanText != null) {
-      return fromCleanText;
-    }
-
-    return SurahLookup.findSurahNumber(fallbackInput);
-  }
-
-  String _applyIslamicTermCorrections(String input) {
-    var normalized = input
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    if (normalized.isEmpty) {
-      return normalized;
-    }
-
-    const replacements = <String, String>{
-      'qoran': 'Quran',
-      'koran': 'Quran',
-      'kuran': 'Quran',
-      'suram': 'surah',
-      'allahh': 'Allah',
-      'mohammad': 'Muhammad',
-      'muhamad': 'Muhammad',
-      'sura': 'surah',
-      'sorah': 'surah',
-      'surat': 'surah',
-      'aya': 'ayah',
-      'ayat': 'ayah',
-      'aayat': 'ayah',
-      'tafseer': 'tafsir',
-      'tafsirr': 'tafsir',
-      'duaah': 'dua',
-      'zikr': 'dhikr',
-      'ramadhan': 'Ramadan',
-      'azan': 'adhan',
-      'salat': 'salah',
-      'qadar': 'qadr',
-      'kadr': 'qadr',
-      'falak': 'falaq',
-      'iklaas': 'ikhlas',
-      'iklas': 'ikhlas',
-      'yaseen': 'yasin',
-      'ya seen': 'yasin',
-      'baqara': 'baqarah',
-      'bakara': 'baqarah',
-      'imraan': 'imran',
-      'rehman': 'rahman',
-      'rahmaan': 'rahman',
-      'rukh': 'mulk',
-      'mulq': 'mulk',
-      'mulkh': 'mulk',
-      'kausar': 'kawthar',
-      'kauthar': 'kawthar',
-    };
-
-    normalized = _applyReplacements(normalized, replacements);
-
-    if (RegExp(r"^(?:let'?s|lets|let us|lex|less)\s+play\b", caseSensitive: false)
-            .hasMatch(normalized) &&
-        RegExp(r'\b(?:sur[a-z]*|ayah?|verse|tafsir|quran)\b', caseSensitive: false)
-            .hasMatch(normalized)) {
-      normalized = normalized.replaceFirst(
-        RegExp(r"^(?:let'?s|lets|let us|lex|less)\s+play\b", caseSensitive: false),
-        'explain',
-      );
-    }
-
-    normalized = normalized.replaceAllMapped(
-      RegExp(r'\b(?:explan|explane|xplain)\b', caseSensitive: false),
-      (_) => 'explain',
-    );
-    normalized = normalized.replaceAllMapped(
-      RegExp(r'\b(?:suratul|surah|surat|suram|sura|sorah)([a-z]{2,})\b', caseSensitive: false),
-      (match) => 'surah ${match.group(1)}',
-    );
-
-    normalized = normalized.replaceAllMapped(
-      RegExp(r'\bverse\s+(\d+)\s+(\d+)\b', caseSensitive: false),
-      (match) => 'verse ${match.group(1)}:${match.group(2)}',
-    );
-    normalized = normalized.replaceAllMapped(
-      RegExp(r'\bayah\s+(\d+)\s+(\d+)\b', caseSensitive: false),
-      (match) => 'ayah ${match.group(1)}:${match.group(2)}',
-    );
-    normalized = normalized.replaceAllMapped(
-      RegExp(r'\bsurah\s+(\d+)\s+ayah\s+(\d+)\b', caseSensitive: false),
-      (match) => 'ayah ${match.group(1)}:${match.group(2)}',
-    );
-    normalized = SurahLookup.normalizeSurahMentions(normalized);
-    normalized = normalized
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    normalized = _applyReplacements(normalized, replacements)
-        .replaceAllMapped(
-          RegExp(r'\bsurah\s+([a-z][a-z0-9\- ]*)', caseSensitive: false),
-          (match) => SurahLookup.normalizeSurahMentions(match.group(0) ?? ''),
-        )
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    return normalized;
-  }
-
-  String _applyReplacements(String input, Map<String, String> replacements) {
-    var normalized = input;
-    replacements.forEach((source, target) {
-      normalized = normalized.replaceAll(
-        RegExp('\\b${RegExp.escape(source)}\\b', caseSensitive: false),
-        target,
-      );
-    });
-    return normalized;
   }
 
   Future<void> _handleExplainAyah(Intent intent) async {
-    final surah = intent.surahNumber ?? 1;
-    final ayah = intent.ayahNumber ?? 1;
-
-    final verse = await _quranApi.getVerse(surah, ayah);
-    if (verse == null) {
+    final verseKey = intent.verseKey ?? '${intent.surahNumber ?? 1}:${intent.ayahNumber ?? 1}';
+    final evidence = await _quranRag.retrieveVerseEvidence(
+      verseKey,
+      queryHint: intent.rawText,
+    );
+    if (evidence == null) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'I could not find verse $surah:$ayah. Please try again.',
+        response: 'I could not retrieve Quran source material for verse $verseKey. Please try again.',
       );
       return;
     }
 
-    state = state.copyWith(currentVerse: verse);
-
-    final tafsirText = await _quranApi.getVerseTafsir(surah, ayah);
-    if (tafsirText == null || tafsirText.isEmpty) {
-      state = state.copyWith(
-        voiceState: VoiceState.idle,
-        response: 'I could not retrieve a tafsir source for verse $surah:$ayah, so I will not generate an unsourced explanation.',
-      );
-      return;
-    }
-
-    final tafsirSource = await _quranApi.getVerseTafsirSource(surah, ayah);
+    final parts = evidence.verseKey.split(':');
+    final surah = parts.length == 2 ? int.tryParse(parts[0]) ?? 1 : 1;
+    final ayah = parts.length == 2 ? int.tryParse(parts[1]) ?? 1 : 1;
+    state = state.copyWith(
+      currentVerse: Verse(
+        verseKey: evidence.verseKey,
+        surahNumber: surah,
+        ayahNumber: ayah,
+        translationText: evidence.translationText,
+      ),
+    );
 
     final prompt = PromptTemplates.explainVerse(
-      arabicText: verse.arabicText ?? '',
-      translationText: verse.translationText ?? '',
-      tafsirText: tafsirText,
-      tafsirSource: tafsirSource,
+      arabicText: '',
+      translationText: evidence.translationText,
+      tafsirText: evidence.tafsirText,
+      tafsirSource: evidence.tafsirSource,
     );
 
     await _streamLlmResponse(
@@ -549,9 +274,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
       intent,
       citations: <GroundingCitation>[
         GroundingCitation(
-          verseKey: verse.verseKey,
-          sourceLabel: tafsirSource ?? 'Retrieved tafsir',
-          excerpt: verse.translationText,
+          verseKey: evidence.verseKey,
+          sourceLabel: evidence.tafsirSource,
+          excerpt: evidence.translationText,
         ),
       ],
     );
@@ -559,33 +284,44 @@ class HomeNotifier extends StateNotifier<HomeState> {
 
   Future<void> _handleExplainSurah(Intent intent) async {
     final surahNum = intent.surahNumber ?? 1;
-    final verses = await _quranApi.getSurahVerses(surahNum);
-
-    if (verses.isEmpty) {
+    final ayahCount = _quranApi.getAyahCountForSurah(surahNum);
+    if (ayahCount == null || ayahCount <= 0) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'Could not fetch surah $surahNum.',
+        response: 'I could not identify Surah $surahNum.',
       );
       return;
     }
 
-    final firstVerse = verses.first;
-    state = state.copyWith(currentVerse: firstVerse);
-
-    final sampleVerseKeys = _sampleSurahVerseKeys(verses);
-    final evidence = await _buildGroundedVerseEvidence(sampleVerseKeys);
+    final sampleVerseKeys = _sampleSurahVerseKeys(surahNum, ayahCount);
+  final evidence = await _buildGroundedVerseEvidence(sampleVerseKeys, maxItems: 3);
     if (evidence.isEmpty) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'I could not retrieve enough tafsir-backed source material for Surah $surahNum, so I will not generate an unsourced overview.',
+        response: 'I could not retrieve enough Quran source material for Surah $surahNum from the bundled RAG database, so I will not generate an unsourced overview.',
       );
       return;
     }
 
+    final primaryEvidence = evidence.first;
+    final verseParts = primaryEvidence.verseKey.split(':');
+    final currentSurah = verseParts.length == 2 ? int.tryParse(verseParts[0]) ?? surahNum : surahNum;
+    final currentAyah = verseParts.length == 2 ? int.tryParse(verseParts[1]) ?? 1 : 1;
+    final surahName = _displaySurahName(surahNum);
+
+    state = state.copyWith(
+      currentVerse: Verse(
+        verseKey: primaryEvidence.verseKey,
+        surahNumber: currentSurah,
+        ayahNumber: currentAyah,
+        translationText: primaryEvidence.translationText,
+      ),
+    );
+
     final prompt = PromptTemplates.groundedSurahOverview(
-      surahName: 'Surah $surahNum',
+      surahName: surahName,
       surahNumber: surahNum,
-      evidenceBlocks: evidence.map((item) => item.promptBlock).toList(),
+      evidenceBlocks: evidence.take(2).map((item) => item.promptBlock).toList(),
     );
 
     await _streamLlmResponse(
@@ -634,19 +370,30 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   Future<void> _handleTranslation(Intent intent) async {
-    final surah = intent.surahNumber ?? 1;
-    final ayah = intent.ayahNumber ?? 1;
-
-    final verse = await _quranApi.getVerse(surah, ayah);
-    if (verse == null) {
+    final verseKey = intent.verseKey ?? '${intent.surahNumber ?? 1}:${intent.ayahNumber ?? 1}';
+    final evidence = await _quranRag.retrieveVerseEvidence(
+      verseKey,
+      queryHint: intent.rawText,
+    );
+    if (evidence == null) {
       state = state.copyWith(voiceState: VoiceState.idle, response: 'Verse not found.');
       return;
     }
 
+    final parts = evidence.verseKey.split(':');
+    final surah = parts.length == 2 ? int.tryParse(parts[0]) ?? 1 : 1;
+    final ayah = parts.length == 2 ? int.tryParse(parts[1]) ?? 1 : 1;
+    final verse = Verse(
+      verseKey: evidence.verseKey,
+      surahNumber: surah,
+      ayahNumber: ayah,
+      translationText: evidence.translationText,
+    );
+
     state = state.copyWith(
       voiceState: VoiceState.idle,
       currentVerse: verse,
-      response: '**$surah:$ayah**\n\n${verse.arabicText ?? ""}\n\n*${verse.translationText ?? ""}*',
+      response: '**$surah:$ayah**\n\n*${evidence.translationText}*',
       citations: const <GroundingCitation>[],
     );
 
@@ -656,21 +403,40 @@ class HomeNotifier extends StateNotifier<HomeState> {
   Future<void> _handleEmotionalGuidance(Intent intent) async {
     final emotion = intent.emotion ?? 'difficulty';
 
-    // Query vector store for relevant verses
+    // Query vector store for relevant Quran/emotional verses only (exclude hadith).
+    // Use the English retrieval query so the embedding search hits English-only DB.
+    final vectorQuery = intent.retrievalQuery.isNotEmpty
+        ? intent.retrievalQuery
+        : '$emotion ${intent.rawText}';
     final results = _vectorStore.queryByText(
-      '$emotion ${intent.rawText}',
-      topK: 3,
+      vectorQuery,
+      topK: 5,
+      filter: (e) {
+        final kind = e.metadata['kind'] ?? '';
+        return kind == 'emotional' || kind == 'quran_corpus';
+      },
     );
 
-    final relevantVerses = results.map((r) {
-      final key = r.entry.metadata['verse_key'] ?? '';
-      return 'Verse $key: ${r.entry.content}';
-    }).toList();
+    final relevantVerses = results
+        .where((r) => (r.entry.metadata['verse_key'] ?? '').isNotEmpty)
+        .map((r) {
+          final key = r.entry.metadata['verse_key']!;
+          // emotional entries store raw text; quran_corpus stores "Translation: ..."
+          final rawContent = r.entry.content;
+          final translation = rawContent.contains('Translation: ')
+              ? rawContent
+                  .split('\n')
+                  .firstWhere((l) => l.startsWith('Translation: '), orElse: () => rawContent)
+                  .replaceFirst('Translation: ', '')
+              : rawContent;
+          return '[QURAN]\nSurah: $key\nTranslation: $translation';
+        })
+        .take(2)
+        .toList();
 
     if (relevantVerses.isEmpty) {
-      // Fallback with pre-defined comforting text
-      relevantVerses.add('Verse 94:5-6: For indeed, with hardship will be ease. Indeed, with hardship will be ease.');
-      relevantVerses.add('Verse 2:286: Allah does not burden a soul beyond that it can bear.');
+      relevantVerses.add('[QURAN]\nSurah: 94:5-6\nTranslation: For indeed, with hardship will be ease. Indeed, with hardship will be ease.');
+      relevantVerses.add('[QURAN]\nSurah: 2:286\nTranslation: Allah does not burden a soul beyond that it can bear.');
     }
 
     final prompt = PromptTemplates.emotionalGuidance(
@@ -683,7 +449,12 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   Future<void> _handleGeneralQuestion(Intent intent) async {
-    final evidence = await _buildGlobalQuestionEvidence(intent.rawText);
+    // Use English retrieval query for vector DB (may differ from rawText when
+    // user spoke in Tamil / Hinglish / Arabic romanization).
+    final ragQuery = intent.retrievalQuery.isNotEmpty
+        ? intent.retrievalQuery
+        : intent.rawText;
+    final evidence = await _buildGlobalQuestionEvidence(ragQuery);
 
     if (evidence.isEmpty) {
       state = state.copyWith(
@@ -693,9 +464,16 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return;
     }
 
+    // Keep grounding compact to reduce first-token latency on mobile devices.
+    final allEvidenceBlocks = evidence
+      .take(2)
+      .map((item) => item.promptBlock)
+      .toList(growable: false);
+
+    // Pass rawText (user's language) as the question so LLM responds in kind.
     final prompt = PromptTemplates.groundedGeneralQuestion(
       question: intent.rawText,
-      evidenceBlocks: evidence.map((item) => item.promptBlock).toList(),
+      evidenceBlocks: allEvidenceBlocks,
     );
     await _streamLlmResponse(
       prompt,
@@ -707,15 +485,15 @@ class HomeNotifier extends StateNotifier<HomeState> {
   Future<List<_GroundedVerseEvidence>> _buildGlobalQuestionEvidence(
     String rawQuery,
   ) async {
-    final query = _normalizeSearchQuery(rawQuery);
-    final searchResults = await _quranApi.search(query);
-    final verseKeys = searchResults
-        .map((result) => result.verseKey)
-        .where((key) => key.isNotEmpty)
-        .toSet()
-        .toList();
-
-    return _buildGroundedVerseEvidence(verseKeys, maxItems: 3);
+    final evidence = await _quranRag.retrieveGroundedEvidence(rawQuery, limit: 3);
+    return evidence
+        .map((item) => _GroundedVerseEvidence(
+              verseKey: item.verseKey,
+              translationText: item.translationText,
+              tafsirText: item.tafsirText,
+              tafsirSource: item.tafsirSource,
+            ))
+        .toList(growable: false);
   }
 
   List<GroundingCitation> _citationsFromEvidence(
@@ -734,66 +512,49 @@ class HomeNotifier extends StateNotifier<HomeState> {
     List<String> verseKeys, {
     int maxItems = 3,
   }) async {
-    final evidence = <_GroundedVerseEvidence>[];
-
-    for (final verseKey in verseKeys) {
-      if (evidence.length >= maxItems) {
-        break;
-      }
-
-      final parts = verseKey.split(':');
-      if (parts.length != 2) {
-        continue;
-      }
-
-      final surahNumber = int.tryParse(parts[0]);
-      final ayahNumber = int.tryParse(parts[1]);
-      if (surahNumber == null || ayahNumber == null) {
-        continue;
-      }
-
-      final verse = await _quranApi.getVerse(surahNumber, ayahNumber);
-      final tafsirText = await _quranApi.getVerseTafsir(surahNumber, ayahNumber);
-      if (verse == null || tafsirText == null || tafsirText.isEmpty) {
-        continue;
-      }
-
-      final tafsirSource = await _quranApi.getVerseTafsirSource(surahNumber, ayahNumber);
-      evidence.add(_GroundedVerseEvidence(
-        verseKey: verseKey,
-        translationText: verse.translationText ?? '',
-        tafsirText: tafsirText,
-        tafsirSource: tafsirSource ?? 'retrieved tafsir source',
-      ));
-    }
-
-    return evidence;
+    final evidence = await _quranRag.retrieveVerseEvidenceBatch(
+      verseKeys,
+      maxItems: maxItems,
+    );
+    return evidence
+        .map((item) => _GroundedVerseEvidence(
+              verseKey: item.verseKey,
+              translationText: item.translationText,
+              tafsirText: item.tafsirText,
+              tafsirSource: item.tafsirSource,
+            ))
+        .toList(growable: false);
   }
 
-  List<String> _sampleSurahVerseKeys(List<Verse> verses) {
-    if (verses.isEmpty) {
+  List<String> _sampleSurahVerseKeys(int surahNumber, int ayahCount) {
+    if (ayahCount <= 0) {
       return const <String>[];
     }
 
-    final indexes = <int>{0, verses.length ~/ 2, verses.length - 1};
-    return indexes
-        .where((index) => index >= 0 && index < verses.length)
-        .map((index) => verses[index].verseKey)
-        .toList();
+    final ayahNumbers = <int>{
+      1,
+      (ayahCount * 0.25).round().clamp(1, ayahCount),
+      ((ayahCount + 1) / 2).round(),
+      (ayahCount * 0.75).round().clamp(1, ayahCount),
+      ayahCount,
+    };
+    return ayahNumbers
+        .where((ayahNumber) => ayahNumber >= 1 && ayahNumber <= ayahCount)
+        .map((ayahNumber) => '$surahNumber:$ayahNumber')
+        .toList(growable: false);
   }
 
-  String _normalizeSearchQuery(String input) {
-    final normalized = input
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    if (normalized.isEmpty) {
-      return input.trim();
+  String _displaySurahName(int surahNumber) {
+    if (surahNumber < 1 || surahNumber > SurahLookup.canonicalSurahNames.length) {
+      return 'Surah $surahNumber';
     }
 
-    return normalized;
+    final canonical = SurahLookup.canonicalSurahNames[surahNumber - 1];
+    return canonical
+        .split('-')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
   }
 
   Future<void> _streamLlmResponse(
@@ -801,18 +562,55 @@ class HomeNotifier extends StateNotifier<HomeState> {
     Intent intent, {
     List<GroundingCitation> citations = const <GroundingCitation>[],
   }) async {
+    final traceTag = PerfTrace.nextTag('home.streamLlmResponse');
+    final totalSw = PerfTrace.start(traceTag, 'stream');
+    final promptLineCount = '\n'.allMatches(prompt).length + 1;
+    final promptWordCount = prompt.trim().isEmpty
+        ? 0
+        : prompt.trim().split(RegExp(r'\s+')).length;
+    final evidenceBlockCount = RegExp(r'\[QURAN\]|\[TAFSIR\]').allMatches(prompt).length;
+    if (PerfTrace.enabled) {
+      debugPrint(
+        'PerfTrace[$traceTag] prompt_chars=${prompt.length} '
+        'prompt_words=$promptWordCount prompt_lines=$promptLineCount '
+        'evidence_blocks=$evidenceBlockCount citations=${citations.length}',
+      );
+    }
     state = state.copyWith(
       isStreaming: true,
       response: '',
       citations: citations,
     );
+    PerfTrace.mark(traceTag, 'stream_state_initialized', totalSw);
 
     final buffer = StringBuffer();
+    var lastUiEmit = DateTime.now();
+    var charsSinceLastEmit = 0;
     bool first = true;
+    bool firstUiEmit = true;
 
     await for (final token in _llmService.generate(prompt)) {
       buffer.write(token);
-      state = state.copyWith(response: buffer.toString());
+      charsSinceLastEmit += token.length;
+
+      if (first) {
+        PerfTrace.mark(traceTag, 'first_token_received', totalSw);
+      }
+
+      final now = DateTime.now();
+      final shouldEmit =
+          charsSinceLastEmit >= 24 ||
+          now.difference(lastUiEmit) >= const Duration(milliseconds: 70) ||
+          token.contains('\n');
+      if (shouldEmit) {
+        state = state.copyWith(response: buffer.toString());
+        if (firstUiEmit) {
+          firstUiEmit = false;
+          PerfTrace.mark(traceTag, 'first_ui_emit', totalSw);
+        }
+        lastUiEmit = now;
+        charsSinceLastEmit = 0;
+      }
 
       if (first) {
         first = false;
@@ -827,11 +625,16 @@ class HomeNotifier extends StateNotifier<HomeState> {
       response: fullResponse,
       citations: citations,
     );
+    PerfTrace.mark(traceTag, 'final_state_committed', totalSw);
 
+    final saveAssistantSw = Stopwatch()..start();
     _saveAssistantMessage(fullResponse, intent);
+    PerfTrace.mark(traceTag, 'save_assistant_message_dispatched', saveAssistantSw);
 
     // TTS playback (fire and forget)
+    PerfTrace.mark(traceTag, 'tts_dispatch', totalSw);
     _speakResponse(fullResponse);
+    PerfTrace.end(traceTag, 'stream', totalSw);
   }
 
   void _saveAssistantMessage(String response, Intent intent) {
@@ -882,24 +685,12 @@ class _GroundedVerseEvidence {
   final String tafsirText;
   final String tafsirSource;
 
-  String get promptBlock =>
-      'Verse $verseKey\nTranslation: $translationText\nTafsir Source: $tafsirSource\nTafsir: $tafsirText';
-}
-
-class _VoiceNormalizationResult {
-  const _VoiceNormalizationResult({
-    required this.intent,
-    required this.surahName,
-    required this.surahNumber,
-    required this.ayahNumber,
-    required this.cleanText,
-  });
-
-  final String intent;
-  final String? surahName;
-  final int? surahNumber;
-  final int? ayahNumber;
-  final String cleanText;
+  String get promptBlock {
+    final tafsirBlock = tafsirText.isNotEmpty
+        ? '\n[TAFSIR]\nSource: $tafsirSource\nText: $tafsirText'
+        : '';
+    return '[QURAN]\nSurah: $verseKey\nTranslation: $translationText$tafsirBlock';
+  }
 }
 
 class GroundingCitation {

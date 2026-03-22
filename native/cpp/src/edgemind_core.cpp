@@ -318,6 +318,46 @@ static std::string ensure_metadata_hash(const std::string &metadata_json,
   return buffer.GetString();
 }
 
+static std::string sanitize_doc_id_component(const std::string &input) {
+  std::string output;
+  output.reserve(input.size());
+
+  bool last_was_underscore = false;
+  for (unsigned char c : input) {
+    const bool allowed = std::isalnum(c) || c == '_' || c == '-';
+    const char out = allowed ? static_cast<char>(c) : '_';
+    if (out == '_') {
+      if (!last_was_underscore) {
+        output.push_back(out);
+      }
+      last_was_underscore = true;
+    } else {
+      output.push_back(out);
+      last_was_underscore = false;
+    }
+  }
+
+  while (!output.empty() && output.front() == '_') {
+    output.erase(output.begin());
+  }
+  while (!output.empty() && output.back() == '_') {
+    output.pop_back();
+  }
+
+  if (output.empty()) {
+    return "doc";
+  }
+  return output;
+}
+
+static std::string chunk_id_prefix_for_hash(const std::string &hash) {
+  return "chunk_" + sanitize_doc_id_component(hash) + "_";
+}
+
+static std::string chunk_id_for_hash(const std::string &hash, int index) {
+  return chunk_id_prefix_for_hash(hash) + std::to_string(index);
+}
+
 // Helper to safely escape strings for JSON injection
 static std::string escape_json_string(const std::string &input) {
   std::string output;
@@ -411,6 +451,89 @@ static bool directory_exists(const std::string &path) {
   return (info.st_mode & S_IFDIR) != 0;
 }
 
+static bool ensure_embedding_engine_loaded_locked(
+    const std::string *override_path = nullptr) {
+  if (override_path && !override_path->empty() &&
+      g_state.embedding_path != *override_path) {
+    if (g_state.embedding_engine) {
+      mnnr_embedding_destroy(g_state.embedding_engine);
+      g_state.embedding_engine = nullptr;
+      g_state.cached_embedding_dim = 0;
+      std::lock_guard<std::recursive_mutex> cache_lock(g_state.cache_mutex);
+      g_state.embedding_cache.clear();
+    }
+    g_state.embedding_path = *override_path;
+  }
+
+  if (g_state.embedding_engine) {
+    const int32_t dim = mnnr_embedding_dim(g_state.embedding_engine);
+    if (dim > 0) {
+      g_state.cached_embedding_dim = dim;
+    }
+    return true;
+  }
+
+  if (g_state.embedding_path.empty()) {
+    LOGE("No embedding path configured");
+    return false;
+  }
+
+  int32_t mnn_err = 0;
+  LOGI("Creating embedding engine with path: %s",
+       g_state.embedding_path.c_str());
+
+  DIR *dir = opendir(g_state.embedding_path.c_str());
+  std::string discovered_mnn;
+  if (dir) {
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+      std::string fname(ent->d_name);
+      if (fname.find(".mnn") != std::string::npos ||
+          fname.find(".bin") != std::string::npos) {
+        if (discovered_mnn.empty() || fname == "model.mnn" ||
+            fname == "llm.mnn") {
+          discovered_mnn = fname;
+        }
+      }
+    }
+    closedir(dir);
+  }
+
+  g_state.embedding_engine =
+      mnnr_embedding_create(g_state.embedding_path.c_str(), &mnn_err);
+
+  if (g_state.embedding_engine) {
+    const uint32_t load_res = mnnr_embedding_load(g_state.embedding_engine);
+    if (load_res != 0) {
+      LOGE("Embedding load FAILED (res=%u).", load_res);
+      mnnr_embedding_destroy(g_state.embedding_engine);
+      g_state.embedding_engine = nullptr;
+
+      if (!discovered_mnn.empty()) {
+        std::string fallback = join_path(g_state.embedding_path, discovered_mnn);
+        LOGI("Trying fallback path: %s", fallback.c_str());
+        int fb_err = 0;
+        g_state.embedding_engine =
+            mnnr_embedding_create(fallback.c_str(), &fb_err);
+        if (g_state.embedding_engine) {
+          if (mnnr_embedding_load(g_state.embedding_engine) != 0) {
+            mnnr_embedding_destroy(g_state.embedding_engine);
+            g_state.embedding_engine = nullptr;
+          }
+        }
+      }
+    }
+  }
+
+  if (!g_state.embedding_engine) {
+    LOGE("Failed to load embedding engine");
+    return false;
+  }
+
+  g_state.cached_embedding_dim = mnnr_embedding_dim(g_state.embedding_engine);
+  return true;
+}
+
 static int unlink_cb(const char *fpath, const struct stat *sb, int typeflag,
                      struct FTW *ftwbuf) {
   int rv = remove(fpath);
@@ -493,7 +616,23 @@ static bool ensure_engines_loaded() {
         g_state.llm = nullptr;
         return false;
       }
-      LOGI("LLM loaded successfully");
+      // Configure sampling to prevent repetition loops
+      mnnr_llm_set_config(g_state.llm,
+        "{\"sampler_type\":\"mixed\","
+        "\"mixed_samplers\":[\"topK\",\"topP\",\"temperature\",\"minP\"],"
+        "\"temperature\":0.7,"
+        "\"topK\":40,"
+        "\"topP\":0.9,"
+        "\"minP\":0.05,"
+        "\"penalty\":1.05,"
+        "\"n_gram\":8,"
+        "\"ngram_factor\":1.05,"
+        "\"max_new_tokens\":1024,"
+        "\"system_prompt\":\"You are Noor, a warm and knowledgeable Quran companion. "
+        "You speak with gentle confidence. You always cite verse references. "
+        "You never fabricate verses or scholarly opinions. "
+        "If unsure, you say so honestly. Use clear markdown formatting.\"}");
+      LOGI("LLM loaded and configured successfully");
     } else {
       LOGE("Failed to create LLM: %d", mnn_err);
       return false;
@@ -501,55 +640,8 @@ static bool ensure_engines_loaded() {
   }
 
   // 2. Initialize Embedding Engine
-  if (!g_state.embedding_engine) {
-    mnn_err = 0;
-    LOGI("Creating embedding engine with path: %s",
-         g_state.embedding_path.c_str());
-
-    // Diagnostic/Discovery
-    DIR *dir = opendir(g_state.embedding_path.c_str());
-    std::string discovered_mnn;
-    if (dir) {
-      struct dirent *ent;
-      while ((ent = readdir(dir)) != NULL) {
-        std::string fname(ent->d_name);
-        if (fname.find(".mnn") != std::string::npos ||
-            fname.find(".bin") != std::string::npos) {
-          if (discovered_mnn.empty() || fname == "model.mnn" ||
-              fname == "llm.mnn") {
-            discovered_mnn = fname;
-          }
-        }
-      }
-      closedir(dir);
-    }
-
-    g_state.embedding_engine =
-        mnnr_embedding_create(g_state.embedding_path.c_str(), &mnn_err);
-
-    if (g_state.embedding_engine) {
-      uint32_t load_res = mnnr_embedding_load(g_state.embedding_engine);
-      if (load_res != 0) {
-        LOGE("Embedding load FAILED (res=%u).", load_res);
-        mnnr_embedding_destroy(g_state.embedding_engine);
-        g_state.embedding_engine = nullptr;
-
-        if (!discovered_mnn.empty()) {
-          std::string fallback =
-              join_path(g_state.embedding_path, discovered_mnn);
-          LOGI("Trying fallback path: %s", fallback.c_str());
-          int fb_err = 0;
-          g_state.embedding_engine =
-              mnnr_embedding_create(fallback.c_str(), &fb_err);
-          if (g_state.embedding_engine) {
-            if (mnnr_embedding_load(g_state.embedding_engine) != 0) {
-              mnnr_embedding_destroy(g_state.embedding_engine);
-              g_state.embedding_engine = nullptr;
-            }
-          }
-        }
-      }
-    }
+  if (!ensure_embedding_engine_loaded_locked()) {
+    return false;
   }
 
   // 3. Initialize Zvec Collection
@@ -591,28 +683,8 @@ static bool ensure_rag_engines_loaded() {
   load_deleted_hashes();
 
   // 1. Initialize Embedding Engine (skip LLM)
-  if (!g_state.embedding_engine) {
-    int32_t mnn_err = 0;
-    LOGI("Creating embedding engine with path: %s",
-         g_state.embedding_path.c_str());
-
-    g_state.embedding_engine =
-        mnnr_embedding_create(g_state.embedding_path.c_str(), &mnn_err);
-
-    if (g_state.embedding_engine) {
-      uint32_t load_res = mnnr_embedding_load(g_state.embedding_engine);
-      if (load_res != 0) {
-        LOGE("Embedding load FAILED (res=%u).", load_res);
-        mnnr_embedding_destroy(g_state.embedding_engine);
-        g_state.embedding_engine = nullptr;
-      }
-    }
-
-    if (!g_state.embedding_engine) {
-      LOGE("Failed to load embedding engine");
-      return false;
-    }
-    g_state.cached_embedding_dim = mnnr_embedding_dim(g_state.embedding_engine);
+  if (!ensure_embedding_engine_loaded_locked()) {
+    return false;
   }
 
   // 2. Initialize Zvec Collection
@@ -640,6 +712,7 @@ FfiResult edgemind_initialize(const char *config_json) {
   rapidjson::Document doc;
   std::string model_dir, embedding_path, collection_path, whisper_dir;
   bool asr_rnnoise_enabled = false;
+  bool prewarm_engines = true;
 
   if (!doc.Parse(config_str.c_str()).HasParseError()) {
     if (doc.HasMember("data_dir") && doc["data_dir"].IsString())
@@ -663,6 +736,14 @@ FfiResult edgemind_initialize(const char *config_json) {
       if (voice.HasMember("asr_rnnoise_enabled") &&
           voice["asr_rnnoise_enabled"].IsBool()) {
         asr_rnnoise_enabled = voice["asr_rnnoise_enabled"].GetBool();
+      }
+    }
+
+    if (doc.HasMember("startup") && doc["startup"].IsObject()) {
+      const auto &startup = doc["startup"];
+      if (startup.HasMember("prewarm_engines") &&
+          startup["prewarm_engines"].IsBool()) {
+        prewarm_engines = startup["prewarm_engines"].GetBool();
       }
     }
 
@@ -698,14 +779,18 @@ FfiResult edgemind_initialize(const char *config_json) {
     g_state.initialized.store(true);
   }
 
-  // Background only the heavy engine loading
-  std::thread([]() {
-    if (!ensure_engines_loaded()) {
-      LOGE("Background engine loading failed");
-    } else {
-      LOGI("Background engine loading complete");
-    }
-  }).detach();
+  // Background only the heavy engine loading when requested.
+  if (prewarm_engines && !model_dir.empty()) {
+    std::thread([]() {
+      if (!ensure_engines_loaded()) {
+        LOGE("Background engine loading failed");
+      } else {
+        LOGI("Background engine loading complete");
+      }
+    }).detach();
+  } else {
+    LOGI("Background engine loading skipped");
+  }
 
   return res;
 }
@@ -780,12 +865,66 @@ struct StreamCallbackData {
   StreamCallback dart_callback;
   void *user_data;
   std::string full_response;
+  MNNR_LLM llm_handle = nullptr;
 };
+
+// Check for sentence-level repetition loops in generated text.
+// Returns true if any sentence of >=30 chars appears 3+ times.
+static bool has_repetition_loop(const std::string &text) {
+  if (text.size() < 150) return false;
+
+  // Split on sentence boundaries (period or newline)
+  std::vector<std::string> sentences;
+  std::string current;
+  for (char c : text) {
+    if (c == '.' || c == '\n') {
+      // Trim whitespace
+      size_t start = current.find_first_not_of(" \t\r\n");
+      if (start != std::string::npos) {
+        std::string trimmed = current.substr(start);
+        size_t end = trimmed.find_last_not_of(" \t\r\n");
+        if (end != std::string::npos) trimmed = trimmed.substr(0, end + 1);
+        if (trimmed.size() >= 30) {
+          sentences.push_back(trimmed);
+        }
+      }
+      current.clear();
+    } else {
+      current += c;
+    }
+  }
+
+  if (sentences.size() < 4) return false;
+
+  // Check if any of the last 2 sentences repeat 3+ times
+  for (size_t i = sentences.size() >= 2 ? sentences.size() - 2 : 0;
+       i < sentences.size(); i++) {
+    int count = 0;
+    for (const auto &s : sentences) {
+      if (s == sentences[i]) count++;
+    }
+    if (count >= 3) return true;
+  }
+  return false;
+}
 
 static void native_stream_callback(const char *token, void *ud) {
   StreamCallbackData *ctx = static_cast<StreamCallbackData *>(ud);
   if (ctx && ctx->dart_callback && token) {
     ctx->full_response += token;
+
+    // Check for repetition loop every ~200 chars
+    if (ctx->full_response.size() > 200 &&
+        ctx->full_response.size() % 50 < std::strlen(token) + 1) {
+      if (has_repetition_loop(ctx->full_response)) {
+        LOGI("Repetition loop detected, cancelling generation");
+        if (ctx->llm_handle) {
+          mnnr_llm_cancel(ctx->llm_handle);
+        }
+        return;
+      }
+    }
+
     const char *allocated_token = allocate_string(token);
     ctx->dart_callback(allocated_token, 0, ctx->user_data);
   }
@@ -1421,9 +1560,11 @@ static ZvecStatus fetch_document_chunks(ZvecCollection coll,
   std::vector<const char *> chunk_ids_ptr;
   chunk_ids_str.reserve((size_t)fetch_limit);
   chunk_ids_ptr.reserve((size_t)fetch_limit);
+  const std::string chunk_prefix = chunk_id_prefix_for_hash(doc_id);
+  const std::string single_doc_id = sanitize_doc_id_component(doc_id);
 
   for (int i = 0; i < fetch_limit; ++i) {
-    chunk_ids_str.push_back("chunk_" + doc_id + "_" + std::to_string(i));
+    chunk_ids_str.push_back(chunk_prefix + std::to_string(i));
   }
   for (int i = 0; i < fetch_limit; ++i) {
     chunk_ids_ptr.push_back(chunk_ids_str[i].c_str());
@@ -1437,9 +1578,8 @@ static ZvecStatus fetch_document_chunks(ZvecCollection coll,
       *results = nullptr;
       *count = 0;
     }
-
-    const char *single_doc_id = doc_id.c_str();
-    status = zvec_fetch(coll, &single_doc_id, 1, results, count);
+    const char *single_doc_id_ptr = single_doc_id.c_str();
+    status = zvec_fetch(coll, &single_doc_id_ptr, 1, results, count);
   }
 
   return status;
@@ -1905,7 +2045,7 @@ static std::string build_rag_prompt_scoped(const std::string &msg_str,
 
       if (!matches_doc && results[i].id) {
         std::string chunk_id = results[i].id;
-        std::string prefix = "chunk_" + doc_id + "_";
+        std::string prefix = chunk_id_prefix_for_hash(doc_id);
         if (chunk_id.rfind(prefix, 0) == 0) {
           matches_doc = true;
           try {
@@ -1916,7 +2056,7 @@ static std::string build_rag_prompt_scoped(const std::string &msg_str,
         }
       } else if (matches_doc && results[i].id) {
         std::string chunk_id = results[i].id;
-        std::string prefix = "chunk_" + doc_id + "_";
+        std::string prefix = chunk_id_prefix_for_hash(doc_id);
         if (chunk_id.rfind(prefix, 0) == 0) {
           try {
             chunk_idx = std::stoi(chunk_id.substr(prefix.length()));
@@ -2015,8 +2155,9 @@ static std::string build_rag_prompt_scoped(const std::string &msg_str,
         std::vector<const char *> chunk_ids_ptr;
         chunk_ids_str.reserve(FETCH_LIMIT);
         chunk_ids_ptr.reserve(FETCH_LIMIT);
+        const std::string chunk_prefix = chunk_id_prefix_for_hash(doc_id);
         for (int i = 0; i < FETCH_LIMIT; ++i) {
-          chunk_ids_str.push_back("chunk_" + doc_id + "_" + std::to_string(i));
+          chunk_ids_str.push_back(chunk_prefix + std::to_string(i));
         }
         for (int i = 0; i < FETCH_LIMIT; ++i) {
           chunk_ids_ptr.push_back(chunk_ids_str[i].c_str());
@@ -2034,7 +2175,7 @@ static std::string build_rag_prompt_scoped(const std::string &msg_str,
             int chunk_idx = 999999;
             if (fetch_results[i].id) {
               std::string chunk_id = std::string(fetch_results[i].id);
-              std::string prefix = "chunk_" + doc_id + "_";
+              std::string prefix = chunk_id_prefix_for_hash(doc_id);
               if (chunk_id.rfind(prefix, 0) == 0) {
                 try {
                   chunk_idx = std::stoi(chunk_id.substr(prefix.length()));
@@ -2342,9 +2483,10 @@ FfiResult edgemind_chat_stream(const char *message, const char *conversation_id,
     cb_data.dart_callback = callback;
     cb_data.user_data = user_data;
     cb_data.full_response.reserve(1024);
+    cb_data.llm_handle = llm;
 
     int status = mnnr_llm_generate_stream(
-        llm, final_prompt.c_str(), native_stream_callback, &cb_data, 512);
+        llm, final_prompt.c_str(), native_stream_callback, &cb_data, 1024);
 
     if (status != 0 && cb_data.full_response.empty()) {
       callback(allocate_string(
@@ -2449,6 +2591,7 @@ FfiStringResult edgemind_add_source(const char *content, const char *metadata) {
     id = "doc_" + std::to_string(now_ms) + "_" + std::to_string(rand() % 10000);
   }
   std::string metadata_with_hash = ensure_metadata_hash(meta_str, id);
+  const std::string storage_id = sanitize_doc_id_component(id);
 
   std::vector<float> vector(dim);
   size_t generated = mnnr_embedding_generate(embedding_handle, content,
@@ -2460,10 +2603,11 @@ FfiStringResult edgemind_add_source(const char *content, const char *metadata) {
     return res;
   }
 
-  LOGI("Inserting doc '%s' with dim %d", id.c_str(), dim);
+  LOGI("Inserting doc '%s' as storage id '%s' with dim %d", id.c_str(),
+       storage_id.c_str(), dim);
 
   ZvecStatus status =
-      zvec_insert(coll_handle, id.c_str(), vector.data(), (uint32_t)dim,
+      zvec_insert(coll_handle, storage_id.c_str(), vector.data(), (uint32_t)dim,
                   content, metadata_with_hash.c_str(), id.c_str());
   if (status == ZVEC_OK) {
     zvec_flush(coll_handle);
@@ -2616,6 +2760,58 @@ FfiResult edgemind_delete_source(const char *doc_id) {
   return {1, 0, nullptr};
 }
 
+FfiStringResult edgemind_embed_text(const char *embedding_path,
+                                    const char *text, int32_t is_query) {
+  FfiStringResult res = {1, 0, nullptr};
+
+  if (!text || std::strlen(text) == 0) {
+    res.success = 0;
+    res.value = allocate_string("text is required");
+    return res;
+  }
+
+  MNNR_Embedding embedding_handle = nullptr;
+  int32_t dim = 0;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_state.lifecycle_mutex);
+    const std::string override_path = embedding_path ? embedding_path : "";
+    const std::string *path_ptr = override_path.empty() ? nullptr : &override_path;
+    if (!ensure_embedding_engine_loaded_locked(path_ptr) ||
+        !g_state.embedding_engine) {
+      res.success = 0;
+      res.value = allocate_string("Embedding engine not initialized");
+      return res;
+    }
+    embedding_handle = g_state.embedding_engine;
+    dim = resolve_embedding_dim();
+  }
+
+  std::string input = text;
+  if (is_query == 1) {
+    input = prepare_query_for_embedding(input);
+  }
+
+  std::vector<float> vector(dim);
+  const size_t generated =
+      mnnr_embedding_generate(embedding_handle, input.c_str(), vector.data(),
+                              static_cast<size_t>(dim));
+  if (generated == 0) {
+    res.success = 0;
+    res.value = allocate_string("Failed to generate embedding");
+    return res;
+  }
+
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  writer.StartArray();
+  for (int32_t i = 0; i < dim; ++i) {
+    writer.Double(static_cast<double>(vector[i]));
+  }
+  writer.EndArray();
+  res.value = allocate_string(buffer.GetString());
+  return res;
+}
+
 FfiStringResult edgemind_search_knowledge(const char *query, int32_t limit) {
   MNNR_Embedding embedding_handle = nullptr;
   ZvecCollection collection_handle = nullptr;
@@ -2729,7 +2925,7 @@ FfiStringResult edgemind_add_paged_document(const char *pages_json,
   }
   std::string metadata_with_hash = ensure_metadata_hash(meta_str, hash);
   for (auto &t : tasks) {
-    t.chunk_id = "chunk_" + hash + "_" + std::to_string(t.index);
+    t.chunk_id = chunk_id_for_hash(hash, t.index);
   }
 
   MNNR_Embedding embedding_handle = nullptr;

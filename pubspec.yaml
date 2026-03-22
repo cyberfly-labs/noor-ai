@@ -36,6 +36,9 @@ dependencies:
   # FFI
   ffi: ^2.1.3
 
+  # Vector DB
+  zvec_flutter: ^0.0.1
+
   # UI
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
@@ -60,4 +63,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/db/
+    - assets/vector_db/
 

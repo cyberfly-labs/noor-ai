@@ -7,7 +7,7 @@ import '../providers/home_provider.dart';
 // ── Noor AI palette ──────────────────────────────────────────────────
 const Color _kGold = Color(0xFFD4AF37);
 const Color _kGoldLight = Color(0xFFF5E6A3);
-const Color _kBg = Color(0xFF0A0A0A);
+const Color _kBg = Color(0xFF060B11);
 
 /// Animated voice button with gold glow – Noor AI theme.
 class AnimatedVoiceButton extends StatefulWidget {

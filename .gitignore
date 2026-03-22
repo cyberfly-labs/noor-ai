@@ -45,3 +45,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated Android zvec static libraries
+/native/cpp/zvec/zvec-android-arm64/lib/

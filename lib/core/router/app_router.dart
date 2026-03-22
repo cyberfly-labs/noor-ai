@@ -73,8 +73,13 @@ final appRouter = GoRouter(
         ),
         GoRoute(
           path: '/daily-ayah',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: DailyAyahPage(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: DailyAyahPage(
+              autoExplain: state.uri.queryParameters['explain'] == '1',
+              forceRefresh: state.uri.queryParameters['refresh'] == '1',
+              refreshRequestId: state.uri.queryParameters['requestId'],
+              requestedVerseKey: state.uri.queryParameters['verseKey'],
+            ),
           ),
         ),
         GoRoute(

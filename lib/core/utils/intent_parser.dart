@@ -1,10 +1,57 @@
 import '../models/intent.dart';
 import '../models/surah.dart';
+import 'named_verse_registry.dart';
+import 'quran_query_helpers.dart';
 
 /// Rule-based intent parser with LLM fallback for unmatched queries.
 class IntentParser {
   IntentParser._();
   static final IntentParser instance = IntentParser._();
+
+  static const Map<String, String> _shortEmotionHints = <String, String>{
+    'peace': 'peace',
+    'inner peace': 'peace',
+    'calm': 'peace',
+    'serenity': 'peace',
+    'tranquility': 'peace',
+    'tranquillity': 'peace',
+    'comfort': 'peace',
+    'reassurance': 'peace',
+  };
+
+  static const Map<String, String> _emotionPhraseHints = <String, String>{
+    'peace of mind': 'anxiety',
+    'lost my peace': 'anxiety',
+    'peace is gone': 'anxiety',
+    'heart feels heavy': 'sadness',
+    'heavy heart': 'sadness',
+    'feel empty': 'sadness',
+    'feeling empty': 'sadness',
+    'feel numb': 'sadness',
+    'feeling numb': 'sadness',
+    'feel overwhelmed': 'stress',
+    'feeling overwhelmed': 'stress',
+    'overwhelmed by life': 'stress',
+    'restless': 'anxiety',
+    'can\'t calm down': 'anxiety',
+    'cannot calm down': 'anxiety',
+    'can\'t focus': 'confusion',
+    'cannot focus': 'confusion',
+    'feel lost': 'lost',
+    'feeling lost': 'lost',
+    'i am lost': 'lost',
+    'i\'m lost': 'lost',
+    'alone in this': 'lonely',
+    'feel alone': 'lonely',
+    'feeling alone': 'lonely',
+    'feel lonely': 'lonely',
+    'feeling lonely': 'lonely',
+    'give up': 'hopeless',
+    'no hope': 'hopeless',
+    'lost hope': 'hopeless',
+    'feel hopeless': 'hopeless',
+    'feeling hopeless': 'hopeless',
+  };
 
   static final _explainSurahPattern = RegExp(
     r'\b(?:explain|about|tell me about|what is|meaning of)\s+(?:surah?\s+)?(.+)',
@@ -76,19 +123,98 @@ class IntentParser {
     caseSensitive: false,
   );
 
-  /// Parse user text into an Intent
+  /// Parse user text into an Intent, enriched with an English [retrievalQuery]
+  /// and detected [responseLanguage].
   Intent parse(String text) {
+    final raw = _parseInternal(text);
+    final retrievalQuery = QuranQueryHelpers.buildEnglishRetrievalQuery(
+      correctedText: raw.rawText.toLowerCase(),
+      intent: raw.type,
+      surahNumber: raw.surahNumber,
+      ayahNumber: raw.ayahNumber,
+    );
+    final responseLanguage = QuranQueryHelpers.detectResponseLanguage(text);
+    return Intent(
+      type: raw.type,
+      surahNumber: raw.surahNumber,
+      ayahNumber: raw.ayahNumber,
+      emotion: raw.emotion,
+      rawText: raw.rawText,
+      retrievalQuery: retrievalQuery,
+      responseLanguage: responseLanguage,
+    );
+  }
+
+  /// Internal parse — returns an unenriched Intent without retrievalQuery/lang.
+  Intent _parseInternal(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
       return Intent(type: IntentType.askGeneralQuestion, rawText: trimmed);
     }
 
-    // Check emotional guidance first (highest priority for emotional needs)
+    final normalized = trimmed.toLowerCase();
+
+    // ── Named verse/surah aliases (highest priority before emotion checks) ──
+    final namedRef = namedVerseMap[normalized];
+    if (namedRef != null) {
+      if (namedRef.ayah != null) {
+        return Intent(
+          type: IntentType.explainAyah,
+          surahNumber: namedRef.surah,
+          ayahNumber: namedRef.ayah,
+          rawText: trimmed,
+        );
+      } else {
+        return Intent(
+          type: IntentType.explainSurah,
+          surahNumber: namedRef.surah,
+          rawText: trimmed,
+        );
+      }
+    }
+    // Also check if the query contains a named verse phrase
+    for (final entry in namedVerseMap.entries) {
+      if (normalized.contains(entry.key)) {
+        final ref = entry.value;
+        if (ref.ayah != null) {
+          return Intent(
+            type: IntentType.explainAyah,
+            surahNumber: ref.surah,
+            ayahNumber: ref.ayah,
+            rawText: trimmed,
+          );
+        } else {
+          return Intent(
+            type: IntentType.explainSurah,
+            surahNumber: ref.surah,
+            rawText: trimmed,
+          );
+        }
+      }
+    }
     final emotionMatch = _emotionPattern.firstMatch(trimmed);
     if (emotionMatch != null) {
       return Intent(
         type: IntentType.emotionalGuidance,
         emotion: emotionMatch.group(1)?.toLowerCase(),
+        rawText: trimmed,
+      );
+    }
+
+    final phraseEmotion = _emotionFromPhrase(normalized);
+    if (phraseEmotion != null) {
+      return Intent(
+        type: IntentType.emotionalGuidance,
+        emotion: phraseEmotion,
+        rawText: trimmed,
+      );
+    }
+
+    final shortEmotion = _emotionFromShortText(normalized);
+    if (shortEmotion != null) {
+      return Intent(
+        type: IntentType.emotionalGuidance,
+        emotion: shortEmotion,
         rawText: trimmed,
       );
     }
@@ -230,6 +356,42 @@ class IntentParser {
 
     // Default: general question
     return Intent(type: IntentType.askGeneralQuestion, rawText: trimmed);
+  }
+
+  String? _emotionFromPhrase(String text) {
+    for (final entry in _emotionPhraseHints.entries) {
+      if (text.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String? _emotionFromShortText(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    if (_shortEmotionHints.containsKey(normalized)) {
+      return _shortEmotionHints[normalized];
+    }
+
+    final words = normalized.split(RegExp(r'\s+'));
+    if (words.length > 3) {
+      return null;
+    }
+
+    for (final entry in _shortEmotionHints.entries) {
+      if (normalized == 'need ${entry.key}' ||
+          normalized == 'want ${entry.key}' ||
+          normalized == 'find ${entry.key}' ||
+          normalized == 'seeking ${entry.key}') {
+        return entry.value;
+      }
+    }
+
+    return null;
   }
 
   /// Try to parse a surah reference (name or number)

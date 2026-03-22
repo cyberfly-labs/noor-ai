@@ -13,10 +13,15 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(MNN_AVAILABLE "Build with MNN library support" ON)
 option(BUILD_SHARED_LIBS "Build shared library" ON)
+option(EDGEMIND_ENABLE_ZVEC "Build with Zvec native vector DB" OFF)
 
 if(ANDROID AND NOT "${ANDROID_ABI}" STREQUAL "arm64-v8a")
     message(STATUS "Disabling MNN features for Android ABI ${ANDROID_ABI}; bundled native AI binaries are arm64-v8a only")
     set(MNN_AVAILABLE OFF)
+    if(EDGEMIND_ENABLE_ZVEC)
+        message(STATUS "Disabling Zvec for Android ABI ${ANDROID_ABI}; bundled zvec binaries are arm64-v8a only")
+        set(EDGEMIND_ENABLE_ZVEC OFF)
+    endif()
 endif()
 
 set(MNN_BUNDLED_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mnn/source")
@@ -89,9 +94,6 @@ add_library(edgemind_core SHARED
     src/mnn_wrapper.cpp
     src/edgemind_core.cpp
 )
-
-# Zvec (native vector DB) – optional: requires prebuilt static libraries
-option(EDGEMIND_ENABLE_ZVEC "Build with Zvec native vector DB" OFF)
 
 if(EDGEMIND_ENABLE_ZVEC)
     set(ZVEC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zvec/zvec-android-arm64")

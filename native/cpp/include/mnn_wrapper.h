@@ -549,6 +549,14 @@ void mnnr_llm_get_stats(MNNR_LLM llm, int32_t *prompt_tokens,
                         int64_t *decode_us);
 
 /**
+ * Set LLM config (sampling parameters, etc.)
+ *
+ * @param llm LLM handle
+ * @param config_json JSON string with config overrides
+ */
+MNNR_EXPORT void mnnr_llm_set_config(MNNR_LLM llm, const char *config_json);
+
+/**
  * Get memory usage of LLM
  *
  * @param llm LLM handle

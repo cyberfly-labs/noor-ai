@@ -39,14 +39,15 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text('Verse $verseKey'),
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.textPrimary,
+        surfaceTintColor: Colors.transparent,
       ),
       body: FutureBuilder<_VerseDetailData>(
         future: _detailFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.gold),
-            );
+            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
           }
 
           final detail = snapshot.data;
@@ -55,58 +56,57 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'I could not load the full details for verse $verseKey.',
+                  'Could not load verse $verseKey.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.textSecondary.withValues(alpha: 0.9),
-                  ),
+                  style: TextStyle(color: AppColors.textMuted),
                 ),
               ),
             );
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Verse card ─────────────────────────
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppColors.card,
+                    color: AppColors.surfaceLight,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.18)),
+                    border: Border.all(color: AppColors.divider),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        detail.verse!.verseKey,
-                        style: TextStyle(
-                          color: AppColors.gold.withValues(alpha: 0.9),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          detail.verse!.verseKey,
+                          style: const TextStyle(color: AppColors.gold, fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
                       Text(
                         detail.verse!.arabicText ?? '',
                         textAlign: TextAlign.center,
                         textDirection: TextDirection.rtl,
-                        style: const TextStyle(
-                          color: AppColors.gold,
-                          fontSize: 28,
-                          height: 1.9,
-                        ),
+                        style: const TextStyle(color: AppColors.gold, fontSize: 26, height: 2.0),
                       ),
                       if ((detail.verse!.translationText ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 20),
+                        Container(height: 0.5, color: AppColors.divider),
+                        const SizedBox(height: 16),
                         Text(
                           detail.verse!.translationText!,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
                             fontSize: 15,
                             height: 1.6,
                             fontStyle: FontStyle.italic,
@@ -116,7 +116,10 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 20),
+
+                // ── Tafsir ──────────────────────────────
                 Text(
                   'Tafsir',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -129,9 +132,9 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.12)),
+                    color: AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,26 +144,20 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Text(
                             detail.tafsirSource!,
-                            style: const TextStyle(
-                              color: AppColors.gold,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: const TextStyle(color: AppColors.gold, fontSize: 12, fontWeight: FontWeight.w700),
                           ),
                         ),
                       Text(
                         (detail.tafsirText ?? '').isNotEmpty
                             ? detail.tafsirText!
                             : 'No tafsir is available for this verse right now.',
-                        style: TextStyle(
-                          color: AppColors.textPrimary.withValues(alpha: 0.95),
-                          fontSize: 14,
-                          height: 1.6,
-                        ),
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.6),
                       ),
                     ],
                   ),
                 ),
+
+                // ── Tafsir Translation ───────────────────
                 if (_translationFutureFor(detail.tafsirText) case final translationFuture?) ...[
                   const SizedBox(height: 20),
                   Text(
@@ -175,9 +172,9 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.12)),
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.divider),
                     ),
                     child: FutureBuilder<String?>(
                       future: translationFuture,
@@ -186,22 +183,14 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                           return Row(
                             children: [
                               const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.gold,
-                                ),
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold),
                               ),
                               const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Translating tafsir...',
-                                  style: TextStyle(
-                                    color: AppColors.textSecondary.withValues(alpha: 0.9),
-                                    fontSize: 14,
-                                  ),
-                                ),
+                              Text(
+                                'Translating tafsir...',
+                                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                               ),
                             ],
                           );
@@ -211,21 +200,13 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                         if (translationText.isEmpty) {
                           return Text(
                             'Translation is not available for this tafsir right now.',
-                            style: TextStyle(
-                              color: AppColors.textSecondary.withValues(alpha: 0.9),
-                              fontSize: 14,
-                              height: 1.6,
-                            ),
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 14, height: 1.6),
                           );
                         }
 
                         return Text(
                           translationText,
-                          style: TextStyle(
-                            color: AppColors.textPrimary.withValues(alpha: 0.95),
-                            fontSize: 14,
-                            height: 1.6,
-                          ),
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.6),
                         );
                       },
                     ),

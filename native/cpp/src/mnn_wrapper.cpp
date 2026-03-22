@@ -1824,7 +1824,7 @@ uint32_t mnnr_llm_generate_stream(MNNR_LLM llm, const char *prompt,
     CallbackStreambuf streambuf(callback, user_data, &wrapper->cancelled);
     std::ostream os(&streambuf);
     std::string query(prompt);
-    wrapper->llm->response(query, &os, "");
+    wrapper->llm->response(query, &os, "", max_tokens > 0 ? max_tokens : -1);
     os.flush();
     if (mnnr_timing_enabled()) {
       auto t1 = std::chrono::steady_clock::now();

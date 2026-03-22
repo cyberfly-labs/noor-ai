@@ -65,6 +65,9 @@ EDGEMIND_EXPORT FfiResult edgemind_cancel_generation();
 EDGEMIND_EXPORT const char *edgemind_version();
 EDGEMIND_EXPORT int32_t edgemind_mnn_available();
 EDGEMIND_EXPORT const char *edgemind_mnn_version();
+EDGEMIND_EXPORT FfiStringResult edgemind_embed_text(const char *embedding_path,
+                                                    const char *text,
+                                                    int32_t is_query);
 EDGEMIND_EXPORT void edgemind_free_string(const char *s);
 EDGEMIND_EXPORT intptr_t edgemind_memory_usage();
 

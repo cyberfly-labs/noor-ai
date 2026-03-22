@@ -22,111 +22,178 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(bookmarksProvider);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Saved Verses'),
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-      ),
-      body: state.isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
-          : state.bookmarks.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: state.bookmarks.length,
-                  itemBuilder: (context, index) {
-                    final bookmark = state.bookmarks[index];
-                    return FadeInUp(
-                      delay: Duration(milliseconds: index * 50),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.gold.withValues(alpha: 0.1)),
+      extendBody: true,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header ───────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Row(
+                children: [
+                  Text(
+                    'Saved',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.gold.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    bookmark.verseKey,
-                                    style: const TextStyle(
-                                      color: AppColors.gold,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 20),
-                                  color: AppColors.textSecondary.withValues(alpha: 0.5),
-                                  onPressed: () {
-                                    ref.read(bookmarksProvider.notifier).remove(bookmark.verseKey);
-                                  },
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            if (bookmark.arabicText != null && bookmark.arabicText!.isNotEmpty)
-                              Text(
-                                bookmark.arabicText!,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  color: AppColors.gold,
-                                  height: 1.8,
-                                ),
-                                textDirection: TextDirection.rtl,
-                              ),
-                            if (bookmark.translationText != null && bookmark.translationText!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                bookmark.translationText!,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.textSecondary,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                            if (bookmark.note != null && bookmark.note!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  bookmark.note!,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.textSecondary.withValues(alpha: 0.7),
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                  ),
+                  const Spacer(),
+                  if (state.bookmarks.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
                       ),
-                    );
-                  },
-                ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.bookmark_rounded, size: 14, color: AppColors.gold),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${state.bookmarks.length}',
+                            style: const TextStyle(
+                              color: AppColors.gold,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Content ──────────────────────────────────
+            Expanded(
+              child: state.isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+                  : state.bookmarks.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.separated(
+                          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPadding + 80),
+                          itemCount: state.bookmarks.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final bookmark = state.bookmarks[index];
+                            return FadeInUp(
+                              delay: Duration(milliseconds: index * 40),
+                              duration: const Duration(milliseconds: 300),
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceLight,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: AppColors.divider),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.gold.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            bookmark.verseKey,
+                                            style: const TextStyle(
+                                              color: AppColors.gold,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: IconButton(
+                                            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                                            color: AppColors.textMuted.withValues(alpha: 0.6),
+                                            padding: EdgeInsets.zero,
+                                            onPressed: () {
+                                              ref.read(bookmarksProvider.notifier).remove(bookmark.verseKey);
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (bookmark.arabicText != null && bookmark.arabicText!.isNotEmpty) ...[
+                                      const SizedBox(height: 14),
+                                      Text(
+                                        bookmark.arabicText!,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          color: AppColors.gold,
+                                          height: 1.8,
+                                        ),
+                                        textDirection: TextDirection.rtl,
+                                      ),
+                                    ],
+                                    if (bookmark.translationText != null && bookmark.translationText!.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        bookmark.translationText!,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: AppColors.textSecondary,
+                                          height: 1.5,
+                                        ),
+                                      ),
+                                    ],
+                                    if (bookmark.note != null && bookmark.note!.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.surface,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(Icons.notes_rounded, size: 14, color: AppColors.textMuted.withValues(alpha: 0.6)),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                bookmark.note!,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppColors.textMuted,
+                                                  fontStyle: FontStyle.italic,
+                                                  height: 1.4,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -135,12 +202,29 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.bookmark_outline, size: 48, color: AppColors.textSecondary.withValues(alpha: 0.3)),
-          const SizedBox(height: 16),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surfaceLight,
+              border: Border.all(color: AppColors.divider),
+            ),
+            child: Icon(Icons.bookmark_outline_rounded, size: 32, color: AppColors.textMuted.withValues(alpha: 0.5)),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'No saved verses yet',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
           Text(
-            'No saved verses yet\nBookmark verses to find them here',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.6)),
+            'Bookmark verses to find them here',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
           ),
         ],
       ),

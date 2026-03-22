@@ -158,7 +158,7 @@ class SurahLookup {
     'al-baqarah': 2, 'baqarah': 2, 'cow': 2,
     'ali-imran': 3, 'imran': 3,
     'an-nisa': 4, 'nisa': 4, 'women': 4,
-    'al-maidah': 5, 'maidah': 5, 'table': 5,
+    'al-maidah': 5, 'al-maida': 5, 'maidah': 5, 'maida': 5, 'table': 5,
     'al-anam': 6, 'anam': 6, 'cattle': 6,
     'al-araf': 7, 'araf': 7, 'heights': 7,
     'al-anfal': 8, 'anfal': 8, 'spoils': 8,
@@ -277,6 +277,17 @@ class SurahLookup {
   static final Map<String, int> _compactNameToNumber = {
     for (final entry in nameToNumber.entries) _compactLookupKey(entry.key): entry.value,
   };
+
+  /// Exact-only surah name lookup (no fuzzy/Levenshtein matching).
+  /// Used for filtering query terms where fuzzy matching is too aggressive
+  /// (e.g. "dua" should not match "duha").
+  static int? findExactSurahNumber(String name) {
+    final normalized = _normalizeLookupKey(name);
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return _lookupExact(normalized);
+  }
 
   static int? findSurahNumber(String name) {
     final normalized = _normalizeLookupKey(name);
@@ -533,7 +544,7 @@ class SurahLookup {
     normalized = normalized.replaceAll(RegExp(r"['’]"), '');
     normalized = normalized.replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
     normalized = normalized.replaceAll(
-      RegExp(r'\b(?:explain|show|open|play|listen|read|recite|recitation|translation|tafsir|details?|detail|meaning|verse|ayah|surah|surat|sura|sorah|for|of|from|the|a|an|to|please|about)\b'),
+      RegExp(r'\b(?:explain|show|open|play|listen|read|recite|recitation|translation|tafsir|details?|detail|meaning|verse|ayah|surah|surat|sura|sorah|for|of|from|the|a|an|to|please|about|via|chat|text|message|messages|typed|typing)\b'),
       ' ',
     );
     normalized = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();

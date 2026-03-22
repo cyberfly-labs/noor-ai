@@ -110,17 +110,12 @@ class QuranApiConfig {
           : 'https://apis.quran.foundation/search';
 
   String get providerLabel {
-    if (usesQuranFoundation) {
-      if (usesQuranFoundationBackend) {
-        return usePrelive
-            ? 'Quran Foundation via Backend (Prelive)'
-            : 'Quran Foundation via Backend';
-      }
+    if (provider == QuranApiProvider.quranFoundation) {
       return usePrelive
-          ? 'Quran Foundation Content API (Prelive)'
-          : 'Quran Foundation Content API';
+          ? 'Local Quran DB + Quran Foundation Audio (Prelive)'
+          : 'Local Quran DB + Quran Foundation Audio';
     }
-    return 'api.alquran.cloud';
+    return 'Local Quran DB + Audio API';
   }
 
   QuranApiConfig copyWith({

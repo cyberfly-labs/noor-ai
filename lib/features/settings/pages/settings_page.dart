@@ -193,137 +193,125 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Settings'),
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _sectionHeader('AI Models'),
-          _settingCard(
-            icon: Icons.download_rounded,
-            title: 'On-Device Models',
-            subtitle: _modelsDownloaded
-                ? 'All models downloaded'
-                : 'Download models for offline use',
-            trailing: _isDownloading
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      value: _downloadProgress.progress > 0
-                          ? _downloadProgress.progress
-                          : null,
-                      color: AppColors.gold,
-                    ),
-                  )
-                : _modelsDownloaded
-                    ? const Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 24,
-                      )
-                    : TextButton(
-                        onPressed: _downloadModels,
-                        child: const Text(
-                          'Download',
-                          style: TextStyle(color: AppColors.gold),
-                        ),
-                      ),
-          ),
-          if (_downloadStatus.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _downloadStatus,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary.withValues(alpha: 0.7),
-                    ),
+      extendBody: true,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 80),
+          children: [
+            // ── Header ──────────────────────────────────
+            Text(
+              'Settings',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
                   ),
-                  if (_isDownloading) ...[
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        minHeight: 8,
-                        value: _downloadProgress.progress,
-                        backgroundColor: AppColors.card,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          AppColors.gold,
+            ),
+            const SizedBox(height: 24),
+
+            _sectionHeader('AI Models'),
+            _settingCard(
+              icon: Icons.download_rounded,
+              title: 'On-Device Models',
+              subtitle: _modelsDownloaded
+                  ? 'All models downloaded'
+                  : 'Download models for offline use',
+              trailing: _isDownloading
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: _downloadProgress.progress > 0
+                            ? _downloadProgress.progress
+                            : null,
+                        color: AppColors.gold,
+                      ),
+                    )
+                  : _modelsDownloaded
+                      ? const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22)
+                      : TextButton(
+                          onPressed: _downloadModels,
+                          child: const Text('Download', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700)),
+                        ),
+            ),
+            if (_downloadStatus.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _downloadStatus,
+                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                    if (_isDownloading) ...[
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          minHeight: 6,
+                          value: _downloadProgress.progress,
+                          backgroundColor: AppColors.surfaceLight,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.gold),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${(_downloadProgress.progress * 100).round()}% complete',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${(_downloadProgress.progress * 100).round()}% complete',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
+              ),
+            const SizedBox(height: 20),
+            _sectionHeader('Audio'),
+            _audioBoostCard(),
+            const SizedBox(height: 20),
+            _sectionHeader('Quran Account'),
+            _quranAccountCard(),
+            const SizedBox(height: 20),
+            _sectionHeader('About'),
+            _settingCard(
+              icon: Icons.info_outline_rounded,
+              title: 'Noor AI',
+              subtitle: 'Version 1.0.0',
+            ),
+            _settingCard(
+              icon: Icons.menu_book_rounded,
+              title: 'Quran Data',
+              subtitle: _quranApiConfig?.providerLabel ?? 'Loading provider...',
+            ),
+            _settingCard(
+              icon: Icons.psychology_outlined,
+              title: 'AI Engine',
+              subtitle: 'MNN + Qwen3.5 + Whisper on-device',
+            ),
+            const SizedBox(height: 20),
+            _sectionHeader('Acknowledgements'),
+            _settingCard(
+              icon: Icons.favorite_outline_rounded,
+              title: 'Open Source',
+              subtitle: 'Built with Flutter, MNN, Edgemind Core',
+            ),
+            const SizedBox(height: 32),
+            Center(
+              child: Text(
+                'Made with devotion',
+                style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.5), fontSize: 12),
               ),
             ),
-          const SizedBox(height: 24),
-          _sectionHeader('Audio'),
-          _audioBoostCard(),
-          const SizedBox(height: 24),
-          _sectionHeader('Quran Account'),
-          _quranAccountCard(),
-          const SizedBox(height: 24),
-          _sectionHeader('About'),
-          _settingCard(
-            icon: Icons.info_outline,
-            title: 'Noor AI',
-            subtitle: 'Version 1.0.0',
-          ),
-          _settingCard(
-            icon: Icons.menu_book_rounded,
-            title: 'Quran Data',
-            subtitle: _quranApiConfig?.providerLabel ?? 'Loading provider...',
-          ),
-          _settingCard(
-            icon: Icons.psychology_outlined,
-            title: 'AI Engine',
-            subtitle: 'MNN + Qwen3.5 + Whisper on-device',
-          ),
-          const SizedBox(height: 24),
-          _sectionHeader('Acknowledgements'),
-          _settingCard(
-            icon: Icons.favorite_outline,
-            title: 'Open Source',
-            subtitle: 'Built with Flutter, MNN, Edgemind Core',
-          ),
-          const SizedBox(height: 40),
-          Center(
-            child: Text(
-              'Made with devotion',
-              style: TextStyle(
-                color: AppColors.textSecondary.withValues(alpha: 0.4),
-                fontSize: 13,
+            const SizedBox(height: 6),
+            Center(
+              child: Text(
+                '﷽',
+                style: TextStyle(color: AppColors.gold.withValues(alpha: 0.4), fontSize: 20),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              '﷽',
-              style: TextStyle(
-                color: AppColors.gold.withValues(alpha: 0.5),
-                fontSize: 20,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -343,9 +331,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.06)),
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,31 +343,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Icon(
-                  Icons.account_circle_outlined,
-                  color: AppColors.gold.withValues(alpha: 0.6),
-                  size: 22,
-                ),
+                child: Icon(Icons.account_circle_outlined, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'Quran Foundation Account',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                      ),
+                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: TextStyle(
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
                     ),
                   ],
                 ),
@@ -395,22 +373,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 FilledButton(
                   onPressed: isBusy ? null : _startUserSignIn,
                   child: isBusy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('Sign In'),
                 ),
               if (isSignedIn)
                 OutlinedButton(
                   onPressed: isBusy || _isSyncingAccount ? null : _syncAccountNow,
                   child: _isSyncingAccount
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('Sync Now'),
                 ),
               if (isSignedIn)
@@ -427,14 +397,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _sectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+      padding: const EdgeInsets.only(left: 2, bottom: 10),
       child: Text(
-        title,
-        style: const TextStyle(
-          color: AppColors.gold,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1,
+        title.toUpperCase(),
+        style: TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
         ),
       ),
     );
@@ -450,42 +420,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.06)),
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              icon,
-              color: AppColors.gold.withValues(alpha: 0.6),
-              size: 22,
-            ),
+            child: Icon(icon, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                  ),
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.textSecondary.withValues(alpha: 0.7),
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
                 ),
               ],
             ),
@@ -501,9 +461,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.06)),
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -513,31 +473,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Icon(
-                  Icons.volume_up_rounded,
-                  color: AppColors.gold.withValues(alpha: 0.6),
-                  size: 22,
-                ),
+                child: Icon(Icons.volume_up_rounded, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'Audio Boost',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                      ),
+                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       'Boost spoken answers and keep recitation playback at the device speaker volume.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
                     ),
                   ],
                 ),
@@ -551,7 +501,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
@@ -561,7 +511,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               )
                   ? _ttsVoiceId
                   : _availableTtsVoices.first.id,
-              dropdownColor: AppColors.card,
+              dropdownColor: AppColors.surfaceLight,
               decoration: const InputDecoration(
                 labelText: 'Voice style',
               ),
@@ -596,8 +546,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ? ' Download the latest models to unlock more voices.'
                       : ''),
               style: TextStyle(
-                color: AppColors.textSecondary.withValues(alpha: 0.7),
-                fontSize: 12,
+                color: AppColors.textMuted,
+                fontSize: 11,
                 height: 1.4,
               ),
             ),
@@ -608,7 +558,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
           Slider(
@@ -636,7 +586,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
           Slider(

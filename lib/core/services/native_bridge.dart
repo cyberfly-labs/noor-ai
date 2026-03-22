@@ -147,6 +147,16 @@ typedef _TtsIsAvailableDart = int Function();
 typedef _TtsSetGainNative = FfiResult Function(Float gain);
 typedef _TtsSetGainDart = FfiResult Function(double gain);
 
+// RAG / Vector search
+typedef _SearchKnowledgeNative = FfiStringResult Function(Pointer<Utf8> query, Int32 limit);
+typedef _SearchKnowledgeDart = FfiStringResult Function(Pointer<Utf8> query, int limit);
+typedef _SearchInDocumentNative = FfiStringResult Function(Pointer<Utf8> docId, Pointer<Utf8> query, Int32 limit);
+typedef _SearchInDocumentDart = FfiStringResult Function(Pointer<Utf8> docId, Pointer<Utf8> query, int limit);
+typedef _AddPagedDocumentNative = FfiStringResult Function(Pointer<Utf8> pagesJson, Pointer<Utf8> metadataJson);
+typedef _AddPagedDocumentDart = FfiStringResult Function(Pointer<Utf8> pagesJson, Pointer<Utf8> metadataJson);
+typedef _EmbedTextNative = FfiStringResult Function(Pointer<Utf8> embeddingPath, Pointer<Utf8> text, Int32 isQuery);
+typedef _EmbedTextDart = FfiStringResult Function(Pointer<Utf8> embeddingPath, Pointer<Utf8> text, int isQuery);
+
 // Memory management
 typedef _FreeStringNative = Void Function(Pointer<Utf8> s);
 typedef _FreeStringDart = void Function(Pointer<Utf8> s);
@@ -166,6 +176,10 @@ _TtsInitDart? _ttsInitFunc;
 _TtsSynthesizeDart? _ttsSynthesizeFunc;
 _TtsIsAvailableDart? _ttsIsAvailableFunc;
 _TtsSetGainDart? _ttsSetGainFunc;
+_SearchKnowledgeDart? _searchKnowledgeFunc;
+_SearchInDocumentDart? _searchInDocumentFunc;
+_AddPagedDocumentDart? _addPagedDocumentFunc;
+_EmbedTextDart? _embedTextFunc;
 _FreeStringDart? _freeStringFunc;
 
 bool _functionsLoaded = false;
@@ -226,6 +240,22 @@ void _loadFunctions() {
     _ttsSetGainFunc = lib
         .lookup<NativeFunction<_TtsSetGainNative>>('edgemind_tts_set_gain')
         .asFunction<_TtsSetGainDart>();
+
+    _searchKnowledgeFunc = lib
+        .lookup<NativeFunction<_SearchKnowledgeNative>>('edgemind_search_knowledge')
+        .asFunction<_SearchKnowledgeDart>();
+
+    _searchInDocumentFunc = lib
+      .lookup<NativeFunction<_SearchInDocumentNative>>('edgemind_search_in_document')
+      .asFunction<_SearchInDocumentDart>();
+
+    _addPagedDocumentFunc = lib
+        .lookup<NativeFunction<_AddPagedDocumentNative>>('edgemind_add_paged_document')
+        .asFunction<_AddPagedDocumentDart>();
+
+    _embedTextFunc = lib
+      .lookup<NativeFunction<_EmbedTextNative>>('edgemind_embed_text')
+      .asFunction<_EmbedTextDart>();
 
     _freeStringFunc = lib
         .lookup<NativeFunction<_FreeStringNative>>('edgemind_free_string')
@@ -469,5 +499,110 @@ class NativeBridge {
   void ttsSetGain(double gain) {
     _loadFunctions();
     _ttsSetGainFunc!(gain);
+  }
+
+  // ── RAG / Vector Search (zvec) ──
+
+  /// Search the native zvec knowledge base.
+  /// Returns a JSON string: `[{"doc_id":..., "chunk_id":..., "score":..., "content":..., "metadata":{...}}, ...]`
+  String? searchKnowledge(String query, {int limit = 5}) {
+    _loadFunctions();
+    final queryPtr = query.toNativeUtf8();
+    try {
+      final result = _searchKnowledgeFunc!(queryPtr, limit);
+      final valuePtr = result.value;
+      try {
+        if (!result.isSuccess) {
+          return null;
+        }
+        return result.stringValue;
+      } finally {
+        _releaseNativeString(valuePtr);
+      }
+    } finally {
+      calloc.free(queryPtr);
+    }
+  }
+
+  /// Search only within a single logical document hash in the native zvec knowledge base.
+  String? searchInDocument(String documentId, String query, {int limit = 5}) {
+    _loadFunctions();
+    final documentPtr = documentId.toNativeUtf8();
+    final queryPtr = query.toNativeUtf8();
+    try {
+      final result = _searchInDocumentFunc!(documentPtr, queryPtr, limit);
+      final valuePtr = result.value;
+      try {
+        if (!result.isSuccess) {
+          return null;
+        }
+        return result.stringValue;
+      } finally {
+        _releaseNativeString(valuePtr);
+      }
+    } finally {
+      calloc.free(documentPtr);
+      calloc.free(queryPtr);
+    }
+  }
+
+  /// Add a paged document to the native zvec knowledge base.
+  /// [pagesJson] is a JSON array of `[{"text": "..."}, ...]`.
+  /// [metadataJson] is a JSON object with at least a `"hash"` field.
+  /// Returns the hash of the inserted document, or null on failure.
+  String? addPagedDocument(String pagesJson, String metadataJson) {
+    _loadFunctions();
+    final pagesPtr = pagesJson.toNativeUtf8();
+    final metaPtr = metadataJson.toNativeUtf8();
+    try {
+      final result = _addPagedDocumentFunc!(pagesPtr, metaPtr);
+      final valuePtr = result.value;
+      try {
+        if (!result.isSuccess) {
+          return null;
+        }
+        return result.stringValue;
+      } finally {
+        _releaseNativeString(valuePtr);
+      }
+    } finally {
+      calloc.free(pagesPtr);
+      calloc.free(metaPtr);
+    }
+  }
+
+  List<double>? embedText(
+    String embeddingPath,
+    String text, {
+    bool isQuery = false,
+  }) {
+    _loadFunctions();
+    final pathPtr = embeddingPath.toNativeUtf8();
+    final textPtr = text.toNativeUtf8();
+    try {
+      final result = _embedTextFunc!(pathPtr, textPtr, isQuery ? 1 : 0);
+      final valuePtr = result.value;
+      try {
+        if (!result.isSuccess) {
+          return null;
+        }
+        final payload = result.stringValue;
+        if (payload == null || payload.isEmpty) {
+          return null;
+        }
+        final decoded = jsonDecode(payload);
+        if (decoded is! List) {
+          return null;
+        }
+        return decoded
+            .map((item) => (item as num).toDouble())
+            .toList(growable: false);
+      } finally {
+        _releaseNativeString(valuePtr);
+      }
+    } finally {
+      calloc.free(pathPtr);
+      calloc.free(textPtr);
+    }
   }
 }

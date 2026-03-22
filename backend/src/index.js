@@ -43,7 +43,10 @@ async function getServiceToken() {
 
   const response = await axios.post(
     `${oauthBaseUrl}/oauth2/token`,
-    new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+      new URLSearchParams({
+        grant_type: 'client_credentials',
+        scope: 'content',
+      }).toString(),
     {
       auth: {
         username: clientId,

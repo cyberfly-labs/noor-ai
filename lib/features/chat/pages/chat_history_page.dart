@@ -23,110 +23,140 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatProvider);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Conversations'),
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-        actions: [
-          if (state.messages.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: AppColors.textSecondary),
-              onPressed: () => _confirmClear(context),
+      extendBody: true,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header ─────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              child: Row(
+                children: [
+                  Text(
+                    'Chat',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                  ),
+                  const Spacer(),
+                  if (state.messages.isNotEmpty)
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                        color: AppColors.textMuted,
+                        padding: EdgeInsets.zero,
+                        onPressed: () => _confirmClear(context),
+                      ),
+                    ),
+                ],
+              ),
             ),
-        ],
-      ),
-      body: state.isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
-          : state.messages.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: state.messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = state.messages[index];
-                    final isUser = msg.role == 'user';
-                    final timeStr = DateFormat.jm().format(msg.createdAt);
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment:
-                            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-                        children: [
-                          if (!isUser)
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: AppColors.gold.withValues(alpha: 0.15),
-                              child: const Icon(Icons.auto_awesome, size: 16, color: AppColors.gold),
-                            ),
-                          if (!isUser) const SizedBox(width: 8),
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: isUser ? AppColors.gold.withValues(alpha: 0.12) : AppColors.card,
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(16),
-                                  topRight: const Radius.circular(16),
-                                  bottomLeft: Radius.circular(isUser ? 16 : 4),
-                                  bottomRight: Radius.circular(isUser ? 4 : 16),
-                                ),
-                              ),
-                              child: Column(
+            // ── Messages ───────────────────────────────
+            Expanded(
+              child: state.isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+                  : state.messages.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPadding + 80),
+                          itemCount: state.messages.length,
+                          itemBuilder: (context, index) {
+                            final msg = state.messages[index];
+                            final isUser = msg.role == 'user';
+                            final timeStr = DateFormat.jm().format(msg.createdAt);
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
                                 children: [
-                                  if (isUser)
-                                    Text(
-                                      msg.content,
-                                      style: const TextStyle(
-                                        color: AppColors.textPrimary,
-                                        fontSize: 14,
+                                  if (!isUser) ...[
+                                    Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: AppColors.gold.withValues(alpha: 0.1),
+                                        border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
                                       ),
-                                    )
-                                  else
-                                    MarkdownBody(
-                                      data: msg.content,
-                                      styleSheet: MarkdownStyleSheet(
-                                        p: const TextStyle(
-                                          color: AppColors.textPrimary,
-                                          fontSize: 14,
-                                          height: 1.5,
-                                        ),
-                                        strong: const TextStyle(
-                                          color: AppColors.gold,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                      child: const Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.gold),
                                     ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    timeStr,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary.withValues(alpha: 0.5),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  Flexible(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: isUser ? AppColors.gold.withValues(alpha: 0.1) : AppColors.surfaceLight,
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: const Radius.circular(16),
+                                          topRight: const Radius.circular(16),
+                                          bottomLeft: Radius.circular(isUser ? 16 : 4),
+                                          bottomRight: Radius.circular(isUser ? 4 : 16),
+                                        ),
+                                        border: Border.all(
+                                          color: isUser ? AppColors.gold.withValues(alpha: 0.15) : AppColors.divider,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if (isUser)
+                                            Text(
+                                              msg.content,
+                                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                                            )
+                                          else
+                                            MarkdownBody(
+                                              data: msg.content,
+                                              styleSheet: MarkdownStyleSheet(
+                                                p: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.5),
+                                                strong: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            timeStr,
+                                            style: TextStyle(fontSize: 10, color: AppColors.textMuted.withValues(alpha: 0.6)),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
+                                  if (isUser) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: AppColors.surfaceLight,
+                                        border: Border.all(color: AppColors.divider),
+                                      ),
+                                      child: const Icon(Icons.person_rounded, size: 14, color: AppColors.textMuted),
+                                    ),
+                                  ],
                                 ],
                               ),
-                            ),
-                          ),
-                          if (isUser) const SizedBox(width: 8),
-                          if (isUser)
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: AppColors.surface,
-                              child: const Icon(Icons.person, size: 16, color: AppColors.textSecondary),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -135,12 +165,25 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 48, color: AppColors.textSecondary.withValues(alpha: 0.3)),
-          const SizedBox(height: 16),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surfaceLight,
+              border: Border.all(color: AppColors.divider),
+            ),
+            child: Icon(Icons.chat_bubble_outline_rounded, size: 30, color: AppColors.textMuted.withValues(alpha: 0.5)),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'No conversations yet',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
           Text(
-            'No conversations yet\nStart by asking Noor a question',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.6)),
+            'Start by asking Noor a question',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -151,7 +194,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.surfaceLight,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Clear History', style: TextStyle(color: AppColors.textPrimary)),
         content: const Text(
           'This will permanently delete all conversations.',
@@ -160,7 +204,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
           ),
           TextButton(
             onPressed: () {
