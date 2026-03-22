@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/services/database_service.dart';
 import 'core/services/daily_ayah_widget_service.dart';
+import 'core/services/daily_notification_service.dart';
 import 'core/services/llm_service.dart';
 import 'core/services/local_quran_asset_service.dart';
 import 'core/services/model_manager.dart';
@@ -74,6 +75,10 @@ Future<void> _warmUpCoreServices() async {
   unawaited(_runStartupTask(
     'daily ayah widget sync',
     DailyAyahWidgetService.instance.syncTodayAyahWidget,
+  ));
+  unawaited(_runStartupTask(
+    'daily notification init',
+    DailyNotificationService.instance.initialize,
   ));
 }
 

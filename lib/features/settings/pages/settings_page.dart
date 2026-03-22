@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/daily_notification_service.dart';
 import '../../../core/services/model_manager.dart';
 import '../../../core/services/quran_api_config_service.dart';
 import '../../../core/services/quran_user_session_service.dart';
@@ -33,6 +34,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   double _playbackVolume = 1.0;
   String _ttsVoiceId = 'F1';
   List<TtsVoiceOption> _availableTtsVoices = const <TtsVoiceOption>[];
+  bool _reminderEnabled = false;
+  TimeOfDay _reminderTime = const TimeOfDay(hour: 6, minute: 0);
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadQuranApiConfig();
     _loadUserAuthState();
     _loadAudioSettings();
+    _loadReminderSettings();
   }
 
   @override
@@ -115,6 +119,46 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         });
       }
     }
+  }
+
+  void _loadReminderSettings() {
+    final svc = DailyNotificationService.instance;
+    _reminderEnabled = svc.enabled;
+    _reminderTime = TimeOfDay(hour: svc.hour, minute: svc.minute);
+  }
+
+  Future<void> _toggleReminder(bool value) async {
+    final svc = DailyNotificationService.instance;
+    if (value) {
+      final granted = await svc.requestPermission();
+      if (!granted) return;
+      await svc.enable(hour: _reminderTime.hour, minute: _reminderTime.minute);
+    } else {
+      await svc.disable();
+    }
+    if (mounted) setState(() => _reminderEnabled = svc.enabled);
+  }
+
+  Future<void> _pickReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _reminderTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.gold,
+              surface: AppColors.surfaceLight,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked == null) return;
+    setState(() => _reminderTime = picked);
+    final svc = DailyNotificationService.instance;
+    await svc.setTime(hour: picked.hour, minute: picked.minute);
   }
 
   Future<void> _loadAudioSettings() async {
@@ -270,6 +314,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             _sectionHeader('Audio'),
             _audioBoostCard(),
             const SizedBox(height: 20),
+            _sectionHeader('Daily Reminder'),
+            _dailyReminderCard(),
+            const SizedBox(height: 20),
             _sectionHeader('Quran Account'),
             _quranAccountCard(),
             const SizedBox(height: 20),
@@ -312,6 +359,80 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _dailyReminderCard() {
+    final timeLabel = _reminderTime.format(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_active_rounded, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Quran Reading Reminder',
+                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _reminderEnabled
+                          ? 'Daily reminder at $timeLabel'
+                          : 'Get a daily nudge to read Quran',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: _reminderEnabled,
+                activeColor: AppColors.gold,
+                onChanged: _toggleReminder,
+              ),
+            ],
+          ),
+          if (_reminderEnabled) ...[
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: _pickReminderTime,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.access_time_rounded, size: 18, color: AppColors.gold),
+                    const SizedBox(width: 10),
+                    Text(
+                      timeLabel,
+                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    const Spacer(),
+                    Text('Change', style: TextStyle(color: AppColors.gold, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
