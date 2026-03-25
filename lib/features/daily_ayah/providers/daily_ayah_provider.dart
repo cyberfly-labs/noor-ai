@@ -165,7 +165,11 @@ class DailyAyahNotifier extends StateNotifier<DailyAyahState> {
         );
       }
 
-      state = state.copyWith(isExplaining: false);
+      final cleanedExplanation = _cleanGeneratedExplanation(buffer.toString());
+      state = state.copyWith(
+        explanation: cleanedExplanation,
+        isExplaining: false,
+      );
     } catch (error) {
       debugPrint('DailyAyah: Explain failed: $error');
       state = state.copyWith(
@@ -192,6 +196,43 @@ class DailyAyahNotifier extends StateNotifier<DailyAyahState> {
     } catch (error) {
       debugPrint('DailyAyah: Manual sync skipped: $error');
     }
+  }
+
+  String _cleanGeneratedExplanation(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+
+    final normalizedWords = trimmed
+        .replaceAllMapped(
+          RegExp(r'\b(\w+)(\s+\1\b)+', caseSensitive: false),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'[ \t]+'), ' ')
+        .trim();
+
+    final segments = normalizedWords
+        .split(RegExp(r'(?<=[.!?])\s+|\n+'))
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+
+    final uniqueSegments = <String>[];
+    final seenNormalizedSegments = <String>{};
+    for (final segment in segments) {
+      final normalizedSegment = segment
+          .toLowerCase()
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (normalizedSegment.isEmpty ||
+          !seenNormalizedSegments.add(normalizedSegment)) {
+        continue;
+      }
+      uniqueSegments.add(segment);
+    }
+
+    return uniqueSegments.join('\n\n').trim();
   }
 }
 

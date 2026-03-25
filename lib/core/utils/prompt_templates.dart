@@ -39,6 +39,7 @@ Rules:
 - Attribute tafsir points to $sourceLabel.
 - Do not add outside knowledge or rulings.
 - Every sentence must be directly supported by the supplied Quran verse or tafsir text.
+- Keep the explanation compact and avoid repeating any word, phrase, sentence, or idea.
 - If the source does not address something, say so.
 
 Structure your response EXACTLY as:
@@ -46,10 +47,10 @@ Structure your response EXACTLY as:
 [Quote the verse and reference.]
 
 📚 **Explanation:**
-[Grounded explanation in 5-8 sentences.]
+[Grounded explanation in 4-6 sentences. Each sentence must add new information.]
 
 ✨ **Summary:**
-[1-2 sentence takeaway.]
+[1 short takeaway sentence.]
 
 Match the user's language. Do not repeat.''';
   }
