@@ -20,18 +20,32 @@ class VectorStoreService {
   /// In-memory fallback entries (non-Android or zvec init failure).
   final List<VectorEntry> _entries = [];
   bool _initialized = false;
+  Future<void>? _initializeFuture;
 
   bool _nativeAvailable = false;
   bool _nativeRuntimeInitialized = false;
   Future<void>? _seedDocumentsFuture;
 
   static const String _emotionalSeedFlag =
-      'vector_store.native.emotional_seed.v1';
+      'vector_store.native.emotional_seed.v2';
   static const String _corpusSeedFlag = 'vector_store.native.corpus_seed.v1';
+  static const String _androidBuiltCorpusVersionKey =
+      'vector_store.native.android_build.version';
   static const String _bundledDbManifestPath =
       'assets/vector_db/manifest.json';
   static const String _bundledDbVersionKey =
       'vector_store.native.asset_db.version';
+    static const String _bundledDbRestoreMarkerFileName =
+      '.bundled_vector_db_version';
+    static const List<String> _bundledDbCriticalRelativePaths = <String>[
+      'zvec_db/manifest.131',
+      'zvec_db/del.0',
+      'zvec_db/0/scalar.0.ipc',
+      'zvec_db/0/scalar.index.1.rocksdb/CURRENT',
+      'zvec_db/idmap.0/CURRENT',
+      'zvec_db_sources.tsv',
+      'zvec_db_deleted.txt',
+    ];
 
   bool get isInitialized => _initialized;
   int get entryCount => _entries.length;
@@ -46,10 +60,92 @@ class VectorStoreService {
     await ModelManager.instance.initialize();
     final prefs = await SharedPreferences.getInstance();
     final dbDir = Directory('${ModelManager.instance.modelsPath}/zvec_db');
-    return prefs.getBool(_corpusSeedFlag) == true && await dbDir.exists();
+    if (prefs.getBool(_corpusSeedFlag) != true || !await dbDir.exists()) {
+      return false;
+    }
+
+    if (!_nativeAvailable) {
+      return false;
+    }
+
+    final probe = _nativeSearch(
+      'hardship ease patience mercy forgiveness guidance',
+      topK: 1,
+    );
+    return probe != null && probe.isNotEmpty;
+  }
+
+  Future<bool> ensureAndroidNativeCorpusBuilt({
+    required Future<List<VectorSeedDocument>> Function() loadDocuments,
+    List<EmotionalVerse> emotionalVerses = const <EmotionalVerse>[],
+  }) async {
+    if (!Platform.isAndroid) {
+      return false;
+    }
+
+    await initialize();
+    if (!_nativeAvailable) {
+      return false;
+    }
+
+    if (await hasReadyNativeCorpus()) {
+      debugPrint('VectorStore: Native corpus already searchable');
+      return true;
+    }
+
+    debugPrint('VectorStore: Building native corpus on Android from local assets');
+
+    final documents = await loadDocuments();
+    final combinedDocuments = <VectorSeedDocument>[
+      ...documents,
+      ...emotionalVerses.map(
+        (verse) => VectorSeedDocument(
+          id: 'emotion_${verse.verseKey}',
+          content: verse.translationText,
+          metadata: <String, String>{
+            'kind': 'emotional',
+            'verse_key': verse.verseKey,
+            'category': verse.category,
+            'emotion': verse.emotion,
+          },
+        ),
+      ),
+    ];
+    await seedDocuments(combinedDocuments);
+
+    final ready = await hasReadyNativeCorpus();
+    if (ready) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_emotionalSeedFlag, true);
+    }
+    debugPrint(
+      'VectorStore: Android native corpus build '
+      '${ready ? 'completed' : 'did not produce a searchable corpus'}',
+    );
+    return ready;
   }
 
   Future<void> initialize() async {
+    if (_initialized) return;
+
+    final pending = _initializeFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+
+    final future = _initializeInternal();
+    _initializeFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_initializeFuture, future)) {
+        _initializeFuture = null;
+      }
+    }
+  }
+
+  Future<void> _initializeInternal() async {
     if (_initialized) return;
 
     await EmbeddingService.instance.initialize();
@@ -137,6 +233,7 @@ class VectorStoreService {
       final nativeSw = Stopwatch()..start();
       final results = _nativeSearch(text, topK: topK, filter: filter);
       if (results != null) {
+        _debugLogSearchResults('native', text, results);
         PerfTrace.mark(traceTag, 'native_search', nativeSw);
         PerfTrace.end(traceTag, 'query', totalSw);
         return results;
@@ -149,6 +246,7 @@ class VectorStoreService {
     PerfTrace.mark(traceTag, 'embed', embedSw);
     final searchSw = Stopwatch()..start();
     final results = query(vector, topK: topK, filter: filter);
+    _debugLogSearchResults('in-memory', text, results);
     PerfTrace.mark(traceTag, 'in_memory_search', searchSw);
     PerfTrace.end(traceTag, 'query', totalSw);
     return results;
@@ -185,8 +283,19 @@ class VectorStoreService {
     if (_nativeAvailable) {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(_emotionalSeedFlag) == true) {
-        debugPrint('VectorStore: Skipping emotional seed - already imported');
-        return;
+        final probe = _nativeSearch(
+          'anxiety worry stress hope mercy relief',
+          topK: 1,
+          filter: (entry) => entry.metadata['kind'] == 'emotional',
+        );
+        if (probe != null && probe.isNotEmpty) {
+          debugPrint('VectorStore: Skipping emotional seed - already imported');
+          return;
+        }
+        debugPrint(
+          'VectorStore: Emotional seed flag was set but emotional entries are not searchable. Rebuilding.',
+        );
+        await prefs.setBool(_emotionalSeedFlag, false);
       }
 
       var seeded = 0;
@@ -199,13 +308,13 @@ class VectorStoreService {
             'hash': 'emotion_${verse.verseKey}',
             'kind': 'emotional',
             'verse_key': verse.verseKey,
+            'category': verse.category,
             'emotion': verse.emotion,
           }),
         );
         if (inserted != null) {
           seeded += 1;
         }
-        await Future<void>.delayed(Duration.zero);
       }
 
       if (seeded == verses.length) {
@@ -217,7 +326,7 @@ class VectorStoreService {
 
     for (final verse in verses) {
       final vector = EmbeddingService.instance.embed(
-        '${verse.emotion} ${verse.translationText}',
+        '${verse.category} ${verse.emotion} ${verse.translationText}',
       );
       insert(
         id: 'emotion_${verse.verseKey}',
@@ -226,6 +335,7 @@ class VectorStoreService {
         metadata: {
           'kind': 'emotional',
           'verse_key': verse.verseKey,
+          'category': verse.category,
           'emotion': verse.emotion,
         },
       );
@@ -263,13 +373,19 @@ class VectorStoreService {
     if (_nativeAvailable) {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(_corpusSeedFlag) == true) {
-        debugPrint('VectorStore: Skipping corpus seed - already imported');
-        return;
+        if (await hasReadyNativeCorpus()) {
+          debugPrint('VectorStore: Skipping corpus seed - already imported');
+          return;
+        }
+        debugPrint(
+          'VectorStore: Corpus seed flag was set but native corpus is not searchable. Rebuilding.',
+        );
+        await prefs.setBool(_corpusSeedFlag, false);
       }
     }
 
     var count = 0;
-    const batchSize = 8;
+    const batchSize = 48;
     for (var i = 0; i < docList.length; i += batchSize) {
       final batch = docList.sublist(
         i,
@@ -277,26 +393,29 @@ class VectorStoreService {
       );
 
       if (_nativeAvailable) {
-        for (final document in batch) {
-          try {
-            final inserted = NativeBridge.instance.addPagedDocument(
-              jsonEncode(<Map<String, String>>[
-                <String, String>{'text': document.content},
-              ]),
-              jsonEncode(<String, String>{
-                'hash': document.id,
-                ...document.metadata,
-              }),
-            );
-            if (inserted != null) {
-              count += 1;
-            }
-          } catch (e) {
-            debugPrint('VectorStore: native insert failed for ${document.id}: $e');
+        try {
+          final payload = jsonEncode(
+            batch
+                .map((document) => <String, Object>{
+                      'content': document.content,
+                      'metadata': <String, String>{
+                        'hash': document.id,
+                        ...document.metadata,
+                      },
+                    })
+                .toList(growable: false),
+          );
+          final insertedCount = NativeBridge.instance.addDocumentsBulk(payload);
+          if (insertedCount != null) {
+            count += insertedCount;
           }
+        } catch (e) {
+          debugPrint('VectorStore: native bulk insert failed for batch at $i: $e');
         }
 
-        await Future<void>.delayed(Duration.zero);
+        if (((i ~/ batchSize) + 1) % 4 == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
         continue;
       }
 
@@ -313,13 +432,19 @@ class VectorStoreService {
         count += 1;
       }
 
-      await Future<void>.delayed(Duration.zero);
+      if (((i ~/ batchSize) + 1) % 4 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
     }
 
     if (_nativeAvailable) {
       final prefs = await SharedPreferences.getInstance();
       if (count == docList.length) {
         await prefs.setBool(_corpusSeedFlag, true);
+        final bundledVersion = await _loadBundledDbVersion();
+        if (bundledVersion.isNotEmpty) {
+          await prefs.setString(_androidBuiltCorpusVersionKey, bundledVersion);
+        }
       }
     }
 
@@ -346,8 +471,13 @@ class VectorStoreService {
 
     try {
       await ModelManager.instance.initialize();
+      final llmConfigPath = ModelManager.instance.llmRuntimeConfigPath();
+      final modelDir = ModelManager.instance.modelPath(ModelType.llm);
+      if (llmConfigPath.isEmpty || modelDir.isEmpty) {
+        return false;
+      }
       final configJson = jsonEncode(<String, Object>{
-        'data_dir': ModelManager.instance.modelPath(ModelType.llm),
+        'data_dir': modelDir.endsWith('/') ? modelDir : '$modelDir/',
         'models': <String, String>{
           'embedding_path': ModelManager.instance.modelPath(ModelType.embedding),
           'whisper_dir': ModelManager.instance.modelPath(ModelType.asr),
@@ -377,14 +507,17 @@ class VectorStoreService {
 
   Future<void> _restoreBundledNativeDbIfAvailable() async {
     try {
+      debugPrint('VectorStore: Checking bundled vector DB manifest at $_bundledDbManifestPath');
       final rawManifest = await rootBundle.loadString(_bundledDbManifestPath);
       final decoded = jsonDecode(rawManifest);
       if (decoded is! Map<String, dynamic>) {
+        debugPrint('VectorStore: Bundled DB manifest is not a JSON object');
         return;
       }
 
       final rawFiles = decoded['files'];
       if (rawFiles is! List || rawFiles.isEmpty) {
+        debugPrint('VectorStore: Bundled DB manifest has no files');
         return;
       }
 
@@ -393,12 +526,9 @@ class VectorStoreService {
           .where((item) => item.isNotEmpty)
           .toList(growable: false);
       if (files.isEmpty) {
+        debugPrint('VectorStore: Bundled DB manifest only contained empty paths');
         return;
       }
-
-      final requiredFiles = files
-          .where((path) => !_isTransientBundledDbFile(path))
-          .toList(growable: false);
 
       final version = (decoded['version'] ?? '').toString();
       final prefs = await SharedPreferences.getInstance();
@@ -406,29 +536,35 @@ class VectorStoreService {
       final restoreRoot = Directory(ModelManager.instance.modelsPath);
       final dbDir = Directory('${ModelManager.instance.modelsPath}/zvec_db');
       final dbDirExists = await dbDir.exists();
-
-      if (dbDirExists) {
-        await _deleteTransientLockFiles(dbDir);
-      }
-
-      final allFilesRestored = await Future.wait(
-        requiredFiles.map((relativePath) async {
-          final targetPath = p.normalize(p.join(restoreRoot.path, relativePath));
-          final file = File(targetPath);
-          if (!await file.exists()) {
-            return false;
-          }
-
-          final length = await file.length();
-          return length > 0;
-        }),
+      final androidBuiltVersion = prefs.getString(_androidBuiltCorpusVersionKey);
+      final savedVersion = prefs.getString(_bundledDbVersionKey) ?? '';
+      final markerVersion = await _loadBundledDbRestoreMarkerVersion(restoreRoot);
+      debugPrint(
+        'VectorStore: Bundled DB manifest version=${version.isEmpty ? '<empty>' : version}, '
+        'savedVersion=$savedVersion, markerVersion=$markerVersion, '
+        'androidBuiltVersion=$androidBuiltVersion, dbDirExists=$dbDirExists',
       );
 
       if (version.isNotEmpty &&
-          prefs.getString(_bundledDbVersionKey) == version &&
+          androidBuiltVersion == version &&
+          dbDirExists) {
+        debugPrint(
+          'VectorStore: Skipping bundled restore because an Android-built corpus already exists for version $version',
+        );
+        return;
+      }
+
+      final hasCriticalFootprint =
+          await _hasBundledDbCriticalFootprint(restoreRoot);
+
+      if (version.isNotEmpty &&
           dbDirExists &&
-          !await _containsTransientLockFiles(dbDir) &&
-          allFilesRestored.every((exists) => exists)) {
+          (savedVersion == version || markerVersion == version) &&
+          hasCriticalFootprint) {
+        if (markerVersion != version) {
+          await _writeBundledDbRestoreMarkerVersion(restoreRoot, version);
+        }
+        debugPrint('VectorStore: Bundled DB already restored for version $version');
         return;
       }
 
@@ -449,10 +585,8 @@ class VectorStoreService {
       }
 
       for (final relativePath in files) {
-        if (_isTransientBundledDbFile(relativePath)) {
-          continue;
-        }
         final assetPath = 'assets/vector_db/$relativePath';
+        debugPrint('VectorStore: Restoring bundled asset $assetPath');
         final bytes = await rootBundle.load(assetPath);
         final targetFile = File(p.normalize(p.join(restoreRoot.path, relativePath)));
         await targetFile.parent.create(recursive: true);
@@ -460,66 +594,129 @@ class VectorStoreService {
           bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
           flush: true,
         );
+        if (!await targetFile.exists()) {
+          throw FileSystemException(
+            'Bundled DB restore did not create expected file',
+            targetFile.path,
+          );
+        }
       }
 
-      await _deleteTransientLockFiles(dbDir);
+      final missingFiles = await _missingBundledFiles(restoreRoot, files);
+      if (missingFiles.isNotEmpty) {
+        throw FileSystemException(
+          'Bundled DB restore left missing files (first: ${missingFiles.first})',
+          restoreRoot.path,
+        );
+      }
 
       if (version.isNotEmpty) {
         await prefs.setString(_bundledDbVersionKey, version);
+        await _writeBundledDbRestoreMarkerVersion(restoreRoot, version);
       }
+      await prefs.remove(_androidBuiltCorpusVersionKey);
       await prefs.setBool(_emotionalSeedFlag, true);
       await prefs.setBool(_corpusSeedFlag, true);
       debugPrint(
         'VectorStore: Restored bundled vector DB '
-        '(${requiredFiles.length} files, skipped ${files.length - requiredFiles.length} transient)',
+        '(${files.length} files)',
       );
-    } on FlutterError {
-      // Bundled vector DB is optional.
+    } on FlutterError catch (e) {
+      debugPrint('VectorStore: Bundled DB restore FlutterError: $e');
     } catch (e) {
       debugPrint('VectorStore: Bundled DB restore skipped: $e');
     }
   }
 
-  bool _isTransientBundledDbFile(String relativePath) {
-    final normalized = p.posix.normalize(relativePath).toLowerCase();
-    return p.posix.basename(normalized) == 'lock';
+  Future<String> _loadBundledDbVersion() async {
+    try {
+      final rawManifest = await rootBundle.loadString(_bundledDbManifestPath);
+      final decoded = jsonDecode(rawManifest);
+      if (decoded is! Map<String, dynamic>) {
+        return '';
+      }
+      return (decoded['version'] ?? '').toString();
+    } catch (_) {
+      return '';
+    }
   }
 
-  Future<void> _deleteTransientLockFiles(Directory dbDir) async {
-    if (!await dbDir.exists()) {
+
+  void _debugLogSearchResults(
+    String source,
+    String query,
+    List<VectorSearchResult> results,
+  ) {
+    if (!kDebugMode) {
       return;
     }
 
-    await for (final entity in dbDir.list(recursive: true, followLinks: false)) {
-      if (entity is! File) {
-        continue;
+    debugPrint(
+      'VectorStore: Search results [$source] query="${query.replaceAll('\n', ' ').trim()}" count=${results.length}',
+    );
+
+    for (var index = 0; index < results.length; index++) {
+      final result = results[index];
+      final content = result.entry.content
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      final metadata = result.entry.metadata.entries
+          .map((entry) => '${entry.key}=${entry.value}')
+          .join(', ');
+      debugPrint(
+        'VectorStore: Result ${index + 1} score=${result.score.toStringAsFixed(4)} '
+        'id=${result.entry.id} metadata={$metadata}',
+      );
+      debugPrint('VectorStore: Result ${index + 1} content=$content');
+    }
+  }
+  Future<bool> _hasBundledDbCriticalFootprint(Directory restoreRoot) async {
+    for (final relativePath in _bundledDbCriticalRelativePaths) {
+      final targetPath = p.normalize(p.join(restoreRoot.path, relativePath));
+      if (!await File(targetPath).exists()) {
+        return false;
       }
-      if (p.basename(entity.path).toLowerCase() != 'lock') {
-        continue;
+    }
+    return true;
+  }
+
+  Future<List<String>> _missingBundledFiles(
+    Directory restoreRoot,
+    List<String> files,
+  ) async {
+    final missing = <String>[];
+    for (final relativePath in files) {
+      final targetPath = p.normalize(p.join(restoreRoot.path, relativePath));
+      if (!await File(targetPath).exists()) {
+        missing.add(relativePath);
       }
-      try {
-        await entity.delete();
-      } catch (e) {
-        debugPrint('VectorStore: Failed to delete transient lock ${entity.path}: $e');
+    }
+    return missing;
+  }
+
+  File _bundledDbRestoreMarkerFile(Directory restoreRoot) {
+    return File(p.join(restoreRoot.path, _bundledDbRestoreMarkerFileName));
+  }
+
+  Future<String> _loadBundledDbRestoreMarkerVersion(Directory restoreRoot) async {
+    try {
+      final markerFile = _bundledDbRestoreMarkerFile(restoreRoot);
+      if (!await markerFile.exists()) {
+        return '';
       }
+      return (await markerFile.readAsString()).trim();
+    } catch (_) {
+      return '';
     }
   }
 
-  Future<bool> _containsTransientLockFiles(Directory dbDir) async {
-    if (!await dbDir.exists()) {
-      return false;
-    }
-
-    await for (final entity in dbDir.list(recursive: true, followLinks: false)) {
-      if (entity is! File) {
-        continue;
-      }
-      if (p.basename(entity.path).toLowerCase() == 'lock') {
-        return true;
-      }
-    }
-
-    return false;
+  Future<void> _writeBundledDbRestoreMarkerVersion(
+    Directory restoreRoot,
+    String version,
+  ) async {
+    final markerFile = _bundledDbRestoreMarkerFile(restoreRoot);
+    await markerFile.parent.create(recursive: true);
+    await markerFile.writeAsString('$version\n', flush: true);
   }
 
   List<VectorSearchResult>? _nativeSearch(
@@ -658,12 +855,14 @@ class VectorSeedDocument {
 
 class EmotionalVerse {
   final String verseKey;
+  final String category;
   final String emotion;
   final String translationText;
   final String? arabicText;
 
   const EmotionalVerse({
     required this.verseKey,
+    required this.category,
     required this.emotion,
     required this.translationText,
     this.arabicText,
@@ -674,102 +873,140 @@ class EmotionalVerse {
 const kEmotionalVerses = <EmotionalVerse>[
   EmotionalVerse(
     verseKey: '2:286',
-    emotion: 'anxiety worry stress overwhelmed',
+    category: 'comfort_relief',
+    emotion: 'hardship relief anxiety worry stress overwhelmed burden resilience',
     translationText: 'Allah does not burden a soul beyond that it can bear.',
   ),
   EmotionalVerse(
     verseKey: '94:5',
-    emotion: 'sadness difficulty hardship',
+    category: 'comfort_relief',
+    emotion: 'hardship relief sadness difficulty hope ease struggle',
     translationText: 'For indeed, with hardship will be ease.',
   ),
   EmotionalVerse(
     verseKey: '94:6',
-    emotion: 'sadness difficulty hardship hope',
+    category: 'comfort_relief',
+    emotion: 'hardship relief sadness difficulty hope ease struggle',
     translationText: 'Indeed, with hardship will be ease.',
   ),
   EmotionalVerse(
+    verseKey: '9:51',
+    category: 'comfort_relief',
+    emotion: 'hardship decree trust acceptance trial relief surrender',
+    translationText: 'Nothing will happen to us except what Allah has decreed for us.',
+  ),
+  EmotionalVerse(
+    verseKey: '94:7-8',
+    category: 'comfort_relief',
+    emotion: 'hardship worship renewal longing devotion recovery',
+    translationText: 'So when you have finished your duties, then stand up for worship. And to your Lord direct your longing.',
+  ),
+  EmotionalVerse(
     verseKey: '13:28',
-    emotion: 'anxiety peace calm heart',
+    category: 'calm_peace',
+    emotion: 'anxiety calm peace heart rest remembrance worry stress',
     translationText: 'Verily, in the remembrance of Allah do hearts find rest.',
   ),
   EmotionalVerse(
-    verseKey: '2:153',
-    emotion: 'patience struggle endurance',
-    translationText: 'O you who have believed, seek help through patience and prayer. Indeed, Allah is with the patient.',
+    verseKey: '89:27-30',
+    category: 'calm_peace',
+    emotion: 'peace calm tranquil soul contentment return serenity',
+    translationText: 'O tranquil soul, return to your Lord, well-pleased and pleasing.',
   ),
   EmotionalVerse(
-    verseKey: '3:139',
-    emotion: 'sadness weakness defeat',
-    translationText: 'So do not weaken and do not grieve, and you will be superior if you are believers.',
-  ),
-  EmotionalVerse(
-    verseKey: '65:3',
-    emotion: 'trust reliance uncertainty',
-    translationText: 'And whoever relies upon Allah - then He is sufficient for him.',
+    verseKey: '2:152',
+    category: 'calm_peace',
+    emotion: 'peace remembrance closeness calm heart gratitude',
+    translationText: 'So remember Me; I will remember you.',
   ),
   EmotionalVerse(
     verseKey: '39:53',
-    emotion: 'hopeless despair sin guilt',
-    translationText: 'Say, O My servants who have transgressed against themselves, do not despair of the mercy of Allah. Indeed, Allah forgives all sins.',
+    category: 'hope_trust',
+    emotion: 'hope trust mercy despair guilt regret sin forgiveness',
+    translationText: 'O My servants who have transgressed against themselves, do not despair of the mercy of Allah. Indeed, Allah forgives all sins.',
   ),
   EmotionalVerse(
-    verseKey: '2:216',
-    emotion: 'confusion understanding wisdom',
-    translationText: 'Perhaps you hate a thing and it is good for you; and perhaps you love a thing and it is bad for you. And Allah knows, while you know not.',
+    verseKey: '65:3',
+    category: 'hope_trust',
+    emotion: 'hope trust reliance uncertainty tawakkul relief provision',
+    translationText: 'And whoever relies upon Allah, then He is sufficient for him.',
+  ),
+  EmotionalVerse(
+    verseKey: '12:87',
+    category: 'hope_trust',
+    emotion: 'hope despair relief hopelessness trust',
+    translationText: 'Indeed, no one despairs of relief from Allah except the disbelieving people.',
+  ),
+  EmotionalVerse(
+    verseKey: '7:156',
+    category: 'mercy_forgiveness',
+    emotion: 'mercy forgiveness compassion hope healing',
+    translationText: 'My mercy encompasses all things.',
+  ),
+  EmotionalVerse(
+    verseKey: '4:110',
+    category: 'mercy_forgiveness',
+    emotion: 'guilt regret forgiveness repentance mercy sin',
+    translationText: 'Whoever does a wrong or wrongs himself but then seeks forgiveness of Allah will find Allah Forgiving and Merciful.',
+  ),
+  EmotionalVerse(
+    verseKey: '6:54',
+    category: 'mercy_forgiveness',
+    emotion: 'mercy compassion hope repentance',
+    translationText: 'Your Lord has decreed upon Himself mercy.',
+  ),
+  EmotionalVerse(
+    verseKey: '14:7',
+    category: 'gratitude_blessings',
+    emotion: 'gratitude thankful blessings increase favor abundance',
+    translationText: 'If you are grateful, I will surely increase you.',
+  ),
+  EmotionalVerse(
+    verseKey: '16:18',
+    category: 'gratitude_blessings',
+    emotion: 'gratitude blessings favors abundance reflection',
+    translationText: 'If you tried to count Allah’s favors, you could never enumerate them.',
+  ),
+  EmotionalVerse(
+    verseKey: '2:172',
+    category: 'gratitude_blessings',
+    emotion: 'gratitude provision blessing thankfulness',
+    translationText: 'Eat from the good things We have provided for you and be grateful to Allah.',
+  ),
+  EmotionalVerse(
+    verseKey: '2:153',
+    category: 'patience_strength',
+    emotion: 'patience strength endurance struggle prayer resilience',
+    translationText: 'Indeed, Allah is with the patient.',
+  ),
+  EmotionalVerse(
+    verseKey: '3:139',
+    category: 'patience_strength',
+    emotion: 'patience strength sadness courage hope grief',
+    translationText: 'Do not lose hope nor be sad.',
+  ),
+  EmotionalVerse(
+    verseKey: '29:69',
+    category: 'patience_strength',
+    emotion: 'patience striving strength guidance perseverance',
+    translationText: 'Those who strive for Us, We will surely guide them to Our ways.',
+  ),
+  EmotionalVerse(
+    verseKey: '93:3',
+    category: 'hope_trust',
+    emotion: 'abandoned forsaken alone lonely reassurance',
+    translationText: 'Your Lord has not taken leave of you, nor has He detested you.',
   ),
   EmotionalVerse(
     verseKey: '9:40',
-    emotion: 'fear lonely alone',
+    category: 'calm_peace',
+    emotion: 'fear lonely alone calm reassurance',
     translationText: 'Do not grieve; indeed Allah is with us.',
   ),
   EmotionalVerse(
     verseKey: '3:173',
-    emotion: 'fear trust safety',
+    category: 'hope_trust',
+    emotion: 'fear trust safety reliance protection',
     translationText: 'Sufficient for us is Allah, and He is the best Disposer of affairs.',
-  ),
-  EmotionalVerse(
-    verseKey: '93:3',
-    emotion: 'abandoned forsaken alone lonely',
-    translationText: 'Your Lord has not taken leave of you, nor has He detested you.',
-  ),
-  EmotionalVerse(
-    verseKey: '14:7',
-    emotion: 'grateful thankful gratitude blessed',
-    translationText: 'If you are grateful, I will surely increase you in favor.',
-  ),
-  EmotionalVerse(
-    verseKey: '12:87',
-    emotion: 'hopeless despair give up',
-    translationText: 'Indeed, no one despairs of relief from Allah except the disbelieving people.',
-  ),
-  EmotionalVerse(
-    verseKey: '2:45',
-    emotion: 'struggle patience prayer',
-    translationText: 'And seek help through patience and prayer, and indeed, it is difficult except for the humbly submissive.',
-  ),
-  EmotionalVerse(
-    verseKey: '29:2',
-    emotion: 'test trial difficulty',
-    translationText: 'Do the people think that they will be left to say, We believe and they will not be tested?',
-  ),
-  EmotionalVerse(
-    verseKey: '40:60',
-    emotion: 'prayer help need',
-    translationText: 'Call upon Me; I will respond to you.',
-  ),
-  EmotionalVerse(
-    verseKey: '8:46',
-    emotion: 'patience endurance strength',
-    translationText: 'And be patient, for indeed, Allah is with the patient.',
-  ),
-  EmotionalVerse(
-    verseKey: '3:200',
-    emotion: 'patience perseverance taqwa',
-    translationText: 'O you who have believed, persevere and endure and remain stationed and fear Allah that you may be successful.',
-  ),
-  EmotionalVerse(
-    verseKey: '42:30',
-    emotion: 'suffering consequences forgiveness',
-    translationText: 'And whatever strikes you of disaster - it is for what your hands have earned; but He pardons much.',
   ),
 ];

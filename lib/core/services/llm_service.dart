@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'native_bridge.dart';
 import 'model_manager.dart';
+import 'vector_store_service.dart';
 import '../utils/perf_trace.dart';
 
 /// On-device LLM service wrapping Qwen3.5-0.8B for Quran explanations
@@ -41,6 +43,13 @@ class LlmService {
       await ModelManager.instance.initialize();
       await ModelManager.instance.ensureRuntimeReady(ModelType.llm);
 
+      // The native core uses the same zvec path for both LLM and vector store.
+      // On Android, wait for bundled DB restore/init to finish before any LLM
+      // startup touches that collection path.
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await VectorStoreService.instance.initialize();
+      }
+
       final hasLlmModel =
           await ModelManager.instance.isModelDownloaded(ModelType.llm);
       if (!hasLlmModel) {
@@ -56,8 +65,15 @@ class LlmService {
         return false;
       }
 
+      final llmConfigPath = ModelManager.instance.llmRuntimeConfigPath();
+      if (llmConfigPath.isEmpty) {
+        debugPrint('LlmService: LLM runtime config path is empty');
+        _initializeFuture = null;
+        return false;
+      }
+
       final configJson = jsonEncode({
-        'data_dir': modelDir,
+        'data_dir': modelDir.endsWith('/') ? modelDir : '$modelDir/',
         'models': {
           'embedding_path': ModelManager.instance.modelPath(ModelType.embedding),
           'whisper_dir': ModelManager.instance.modelPath(ModelType.asr),

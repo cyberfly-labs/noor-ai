@@ -344,15 +344,26 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                       (citation) => GestureDetector(
                         onTap: () => _openVerseDetail(citation.verseKey),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                           decoration: BoxDecoration(
                             color: AppColors.gold.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: AppColors.gold.withValues(alpha: 0.12)),
                           ),
-                          child: Text(
-                            citation.verseKey,
-                            style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w700),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                citation.quranSourceLabel,
+                                style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Tafsir: ${citation.tafsirSourceLabel}',
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 10, fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ),
                         ),
                       ),

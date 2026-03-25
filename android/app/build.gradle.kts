@@ -1,5 +1,14 @@
 import java.util.Properties
 import java.io.FileInputStream
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.Copy
+
+val nativeAbi = "arm64-v8a"
+val nativeLibName = "libedgemind_core.so"
+
+fun String.capitalizeAscii(): String = replaceFirstChar {
+    if (it.isLowerCase()) it.titlecase() else it.toString()
+}
 
 plugins {
     id("com.android.application")
@@ -37,7 +46,7 @@ android {
         versionName = flutter.versionName
         ndk {
             abiFilters.clear()
-            abiFilters += "arm64-v8a"
+            abiFilters += nativeAbi
         }
         externalNativeBuild {
             cmake {
@@ -66,7 +75,10 @@ android {
 
     packaging {
         jniLibs {
-            pickFirsts += setOf("lib/arm64-v8a/libc++_shared.so")
+            pickFirsts += setOf(
+                "lib/$nativeAbi/libc++_shared.so",
+                "lib/$nativeAbi/$nativeLibName"
+            )
         }
     }
 
@@ -95,6 +107,37 @@ android {
 
 flutter {
     source = "../.."
+}
+
+afterEvaluate {
+    listOf("debug", "profile", "release").forEach { variant ->
+        val capitalizedVariant = variant.capitalizeAscii()
+        val syncTask = tasks.register<Copy>("sync${capitalizedVariant}EdgemindCoreJniLib") {
+            group = "build"
+            description = "Copies the rebuilt $nativeLibName into src/main/jniLibs for $variant."
+            dependsOn("externalNativeBuild${capitalizedVariant}")
+            into(layout.projectDirectory.dir("src/main/jniLibs/$nativeAbi"))
+            from({
+                val cxxDir = layout.buildDirectory.dir("intermediates/cxx/$variant").get().asFile
+                val matches = fileTree(cxxDir) {
+                    include("**/obj/$nativeAbi/$nativeLibName")
+                }.files
+                val newestMatch = matches.maxByOrNull { it.lastModified() }
+                    ?: throw GradleException(
+                        "Could not find rebuilt $nativeLibName for $variant under ${cxxDir.absolutePath}."
+                    )
+                newestMatch
+            })
+        }
+
+        tasks.named("merge${capitalizedVariant}NativeLibs").configure {
+            dependsOn(syncTask)
+        }
+
+        tasks.named("merge${capitalizedVariant}JniLibFolders").configure {
+            dependsOn(syncTask)
+        }
+    }
 }
 
 dependencies {

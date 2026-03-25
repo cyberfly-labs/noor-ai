@@ -12,7 +12,9 @@ import 'core/services/llm_service.dart';
 import 'core/services/local_quran_asset_service.dart';
 import 'core/services/model_manager.dart';
 import 'core/services/quran_user_session_service.dart';
-import 'core/services/vector_store_service.dart' show VectorStoreService;
+import 'core/services/vector_store_service.dart' show VectorStoreService, kEmotionalVerses;
+
+AppLifecycleListener? _appLifecycleListener;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +31,13 @@ Future<void> main() async {
     systemNavigationBarColor: Color(0xFF060B11),
   ));
 
+  _appLifecycleListener = AppLifecycleListener(
+    onResume: () {
+      unawaited(DailyNotificationService.instance.initialize());
+    },
+  );
+  assert(_appLifecycleListener != null);
+
   runApp(const ProviderScope(child: NoorAiApp()));
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -41,6 +50,16 @@ Future<void> _warmUpCoreServices() async {
     await VectorStoreService.instance.initialize();
     if (await VectorStoreService.instance.hasReadyNativeCorpus()) {
       return 'bundled-native-corpus-ready';
+    }
+    if (VectorStoreService.instance.usesNativeZvec) {
+      await LocalQuranAssetService.instance.initialize();
+      final built = await VectorStoreService.instance.ensureAndroidNativeCorpusBuilt(
+        loadDocuments: LocalQuranAssetService.instance.loadVectorDocuments,
+        emotionalVerses: kEmotionalVerses,
+      );
+      if (built) {
+        return 'android-native-corpus-built';
+      }
     }
     return VectorStoreService.instance.usesNativeZvec
         ? 'native-runtime-ready-without-bundled-db'

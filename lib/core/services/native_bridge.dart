@@ -154,6 +154,8 @@ typedef _SearchInDocumentNative = FfiStringResult Function(Pointer<Utf8> docId, 
 typedef _SearchInDocumentDart = FfiStringResult Function(Pointer<Utf8> docId, Pointer<Utf8> query, int limit);
 typedef _AddPagedDocumentNative = FfiStringResult Function(Pointer<Utf8> pagesJson, Pointer<Utf8> metadataJson);
 typedef _AddPagedDocumentDart = FfiStringResult Function(Pointer<Utf8> pagesJson, Pointer<Utf8> metadataJson);
+typedef _AddDocumentsBulkNative = FfiStringResult Function(Pointer<Utf8> documentsJson);
+typedef _AddDocumentsBulkDart = FfiStringResult Function(Pointer<Utf8> documentsJson);
 typedef _EmbedTextNative = FfiStringResult Function(Pointer<Utf8> embeddingPath, Pointer<Utf8> text, Int32 isQuery);
 typedef _EmbedTextDart = FfiStringResult Function(Pointer<Utf8> embeddingPath, Pointer<Utf8> text, int isQuery);
 
@@ -179,6 +181,7 @@ _TtsSetGainDart? _ttsSetGainFunc;
 _SearchKnowledgeDart? _searchKnowledgeFunc;
 _SearchInDocumentDart? _searchInDocumentFunc;
 _AddPagedDocumentDart? _addPagedDocumentFunc;
+_AddDocumentsBulkDart? _addDocumentsBulkFunc;
 _EmbedTextDart? _embedTextFunc;
 _FreeStringDart? _freeStringFunc;
 
@@ -252,6 +255,10 @@ void _loadFunctions() {
     _addPagedDocumentFunc = lib
         .lookup<NativeFunction<_AddPagedDocumentNative>>('edgemind_add_paged_document')
         .asFunction<_AddPagedDocumentDart>();
+
+    _addDocumentsBulkFunc = lib
+      .lookup<NativeFunction<_AddDocumentsBulkNative>>('edgemind_add_documents_bulk')
+      .asFunction<_AddDocumentsBulkDart>();
 
     _embedTextFunc = lib
       .lookup<NativeFunction<_EmbedTextNative>>('edgemind_embed_text')
@@ -568,6 +575,25 @@ class NativeBridge {
     } finally {
       calloc.free(pagesPtr);
       calloc.free(metaPtr);
+    }
+  }
+
+  int? addDocumentsBulk(String documentsJson) {
+    _loadFunctions();
+    final docsPtr = documentsJson.toNativeUtf8();
+    try {
+      final result = _addDocumentsBulkFunc!(docsPtr);
+      final valuePtr = result.value;
+      try {
+        if (!result.isSuccess) {
+          return null;
+        }
+        return int.tryParse(result.stringValue ?? '');
+      } finally {
+        _releaseNativeString(valuePtr);
+      }
+    } finally {
+      calloc.free(docsPtr);
     }
   }
 

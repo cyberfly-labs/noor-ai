@@ -92,6 +92,8 @@ EDGEMIND_EXPORT FfiStringResult edgemind_search_in_document(const char *doc_id,
                                                             int32_t limit);
 EDGEMIND_EXPORT FfiStringResult
 edgemind_add_paged_document(const char *pages_json, const char *metadata_json);
+EDGEMIND_EXPORT FfiStringResult
+edgemind_add_documents_bulk(const char *documents_json);
 EDGEMIND_EXPORT FfiResult edgemind_rebuild_sources_index();
 
 // =============================================================================

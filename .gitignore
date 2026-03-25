@@ -48,3 +48,6 @@ app.*.map.json
 
 # Generated Android zvec static libraries
 /native/cpp/zvec/zvec-android-arm64/lib/
+
+# Generated Android native core copied by local builds; too large for GitHub
+/android/app/src/main/jniLibs/arm64-v8a/libedgemind_core.so

@@ -318,6 +318,13 @@ static std::string ensure_metadata_hash(const std::string &metadata_json,
   return buffer.GetString();
 }
 
+static std::string json_value_to_string(const rapidjson::Value &value) {
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  value.Accept(writer);
+  return buffer.GetString();
+}
+
 static std::string sanitize_doc_id_component(const std::string &input) {
   std::string output;
   output.reserve(input.size());
@@ -547,12 +554,67 @@ static void delete_directory(const std::string &path) {
   nftw(path.c_str(), unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
 }
 
+static const char *zvec_status_name(ZvecStatus status) {
+  switch (status) {
+  case ZVEC_OK:
+    return "ZVEC_OK";
+  case ZVEC_ERROR_INVALID_PARAM:
+    return "ZVEC_ERROR_INVALID_PARAM";
+  case ZVEC_ERROR_NOT_FOUND:
+    return "ZVEC_ERROR_NOT_FOUND";
+  case ZVEC_ERROR_IO:
+    return "ZVEC_ERROR_IO";
+  case ZVEC_ERROR_INTERNAL:
+    return "ZVEC_ERROR_INTERNAL";
+  case ZVEC_ERROR_ALREADY_EXISTS:
+    return "ZVEC_ERROR_ALREADY_EXISTS";
+  case ZVEC_ERROR_NOT_SUPPORTED:
+    return "ZVEC_ERROR_NOT_SUPPORTED";
+  }
+  return "ZVEC_STATUS_UNKNOWN";
+}
+
+static std::string canonicalize_existing_path(const std::string &path) {
+  if (path.empty()) {
+    return path;
+  }
+
+  char actual_path[4096];
+  if (realpath(path.c_str(), actual_path)) {
+    return std::string(actual_path);
+  }
+
+  auto slash_pos = path.find_last_of('/');
+  if (slash_pos == std::string::npos) {
+    return path;
+  }
+
+  const std::string parent = path.substr(0, slash_pos);
+  const std::string leaf = path.substr(slash_pos + 1);
+  if (parent.empty() || leaf.empty()) {
+    return path;
+  }
+
+  if (!realpath(parent.c_str(), actual_path)) {
+    return path;
+  }
+
+  std::string resolved = actual_path;
+  if (!resolved.empty() && resolved.back() != '/') {
+    resolved += "/";
+  }
+  resolved += leaf;
+  return resolved;
+}
+
 // Helper to open or recreate collection with schema validation
 static ZvecStatus open_or_recreate_collection(const std::string &path,
                                               int32_t dim) {
   ZvecStatus z_status = ZVEC_ERROR_INTERNAL;
   if (directory_exists(path)) {
     LOGI("Checking existing collection at %s", path.c_str());
+    LOGI("Bundled sidecars: sources=%s deleted=%s", sources_index_path().c_str(),
+         deleted_hashes_path().c_str());
     z_status = zvec_open_collection(path.c_str(), &g_state.collection);
     if (z_status == ZVEC_OK) {
       uint32_t current_dim = zvec_get_dimension(g_state.collection);
@@ -572,7 +634,17 @@ static ZvecStatus open_or_recreate_collection(const std::string &path,
         z_status = ZVEC_ERROR_NOT_FOUND;
       }
     } else {
-      LOGE("Failed to open existing collection: %d", z_status);
+      const char *last_error = zvec_get_last_error();
+      LOGE("Failed to open existing collection: status=%d (%s), last_error=%s",
+           z_status, zvec_status_name(z_status),
+           last_error != nullptr ? last_error : "<none>");
+      LOGW("Existing collection at %s is unreadable. Recreating from scratch.",
+           path.c_str());
+      delete_directory(path);
+      g_state.deleted_hashes.clear();
+      save_deleted_hashes();
+      clear_source_index();
+      z_status = ZVEC_ERROR_NOT_FOUND;
     }
   }
 
@@ -580,6 +652,12 @@ static ZvecStatus open_or_recreate_collection(const std::string &path,
     LOGI("Creating fresh collection at %s with dim %d", path.c_str(), dim);
     z_status = zvec_create_collection(path.c_str(), "default", (uint32_t)dim,
                                       &g_state.collection);
+    if (z_status != ZVEC_OK) {
+      const char *last_error = zvec_get_last_error();
+      LOGE("Failed to create fresh collection: status=%d (%s), last_error=%s",
+           z_status, zvec_status_name(z_status),
+           last_error != nullptr ? last_error : "<none>");
+    }
     if (z_status == ZVEC_OK) {
       g_state.deleted_hashes.clear();
       save_deleted_hashes();
@@ -627,7 +705,7 @@ static bool ensure_engines_loaded() {
         "\"penalty\":1.05,"
         "\"n_gram\":8,"
         "\"ngram_factor\":1.05,"
-        "\"max_new_tokens\":1024,"
+        "\"max_new_tokens\":280,"
         "\"system_prompt\":\"You are Noor, a warm and knowledgeable Quran companion. "
         "You speak with gentle confidence. You always cite verse references. "
         "You never fabricate verses or scholarly opinions. "
@@ -758,15 +836,17 @@ FfiResult edgemind_initialize(const char *config_json) {
 
   // Normalize paths synchronously (fast)
   if (!model_dir.empty()) {
-    char actual_path[4096];
-    if (realpath(model_dir.c_str(), actual_path)) {
-      model_dir = actual_path;
-      if (model_dir.back() != '/')
-        model_dir += "/";
-    }
+    model_dir = canonicalize_existing_path(model_dir);
+    // Always ensure trailing slash whether or not realpath succeeded.
+    // On Android, /data/user/0/ is a symlink to /data/data/ and realpath
+    // may fail; without the slash MNN concatenates filenames with no separator.
+    if (model_dir.back() != '/')
+      model_dir += "/";
   }
   if (collection_path.empty() && !model_dir.empty()) {
     collection_path = model_dir + "zvec_db";
+  } else if (!collection_path.empty()) {
+    collection_path = canonicalize_existing_path(collection_path);
   }
 
   {
@@ -3022,7 +3102,6 @@ FfiStringResult edgemind_add_paged_document(const char *pages_json,
   // Flush once after all pages are inserted for efficiency
   if (coll_handle) {
     zvec_flush(coll_handle);
-    zvec_optimize(coll_handle);
   }
 
   LOGI("edgemind_add_paged_document: completed - indexed %d/%d pages for hash "
@@ -3033,6 +3112,103 @@ FfiStringResult edgemind_add_paged_document(const char *pages_json,
   }
 
   return {1, 0, allocate_string(hash)};
+}
+
+FfiStringResult edgemind_add_documents_bulk(const char *documents_json) {
+  if (!documents_json) {
+    return {0, 0, allocate_string("Missing input")};
+  }
+
+  rapidjson::Document docs_doc;
+  if (docs_doc.Parse(documents_json).HasParseError() || !docs_doc.IsArray()) {
+    return {0, 0, allocate_string("Invalid documents format")};
+  }
+
+  MNNR_Embedding embedding_handle = nullptr;
+  ZvecCollection coll_handle = nullptr;
+  int32_t dim = 0;
+
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_state.lifecycle_mutex);
+    if (!ensure_rag_engines_loaded() || !g_state.collection ||
+        !g_state.embedding_engine) {
+      return {0, 0, allocate_string("Engines not initialized or load failed")};
+    }
+    embedding_handle = g_state.embedding_engine;
+    coll_handle = g_state.collection;
+    dim = resolve_embedding_dim();
+  }
+
+  std::vector<float> vector((size_t)dim);
+  int inserted_count = 0;
+  int attempted_count = 0;
+
+  for (auto &doc : docs_doc.GetArray()) {
+    if (!doc.IsObject()) {
+      continue;
+    }
+    if (!doc.HasMember("content") || !doc["content"].IsString()) {
+      continue;
+    }
+
+    const std::string content = doc["content"].GetString();
+    if (content.empty()) {
+      continue;
+    }
+
+    std::string metadata_json = "{}";
+    if (doc.HasMember("metadata")) {
+      if (doc["metadata"].IsString()) {
+        metadata_json = doc["metadata"].GetString();
+      } else if (doc["metadata"].IsObject()) {
+        metadata_json = json_value_to_string(doc["metadata"]);
+      }
+    }
+
+    std::string hash = get_json_string_value(metadata_json, "hash");
+    if (hash.empty()) {
+      hash = get_json_string_value(metadata_json, "id");
+    }
+    if (hash.empty()) {
+      auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+      hash = "doc_" + std::to_string(now_ms) + "_" +
+             std::to_string(rand() % 10000);
+    }
+
+    std::string metadata_with_hash = ensure_metadata_hash(metadata_json, hash);
+    const std::string chunk_id = chunk_id_for_hash(hash, 0);
+
+    attempted_count++;
+    size_t gen_res = mnnr_embedding_generate(
+        embedding_handle, content.c_str(), vector.data(), dim);
+    if (gen_res == 0) {
+      LOGE("edgemind_add_documents_bulk: embedding failed for hash %s",
+           hash.c_str());
+      continue;
+    }
+
+    ZvecStatus st = zvec_insert(coll_handle, chunk_id.c_str(), vector.data(),
+                                (uint32_t)dim, content.c_str(),
+                                metadata_with_hash.c_str(), hash.c_str());
+    if (st != ZVEC_OK) {
+      LOGE("edgemind_add_documents_bulk: zvec_insert failed for hash %s (status=%d)",
+           hash.c_str(), st);
+      continue;
+    }
+
+    inserted_count++;
+    upsert_source_index(hash, metadata_with_hash);
+  }
+
+  if (coll_handle && inserted_count > 0) {
+    zvec_flush(coll_handle);
+  }
+
+  LOGI("edgemind_add_documents_bulk: completed - indexed %d/%d documents",
+       inserted_count, attempted_count);
+  return {1, 0, allocate_string(std::to_string(inserted_count))};
 }
 
 FfiResult edgemind_rebuild_sources_index() {

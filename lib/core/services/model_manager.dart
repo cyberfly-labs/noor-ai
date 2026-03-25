@@ -59,12 +59,14 @@ class _PlannedDownload {
   final String file;
   final File targetFile;
   final String url;
+  final int? expectedBytes;
 
   const _PlannedDownload({
     required this.model,
     required this.file,
     required this.targetFile,
     required this.url,
+    required this.expectedBytes,
   });
 }
 
@@ -191,6 +193,25 @@ class ModelManager {
     return '$basePath/${info.subDir}';
   }
 
+  String llmRuntimeConfigPath() {
+    final llmDir = modelPath(ModelType.llm);
+    if (llmDir.isEmpty) {
+      return '';
+    }
+
+    final runtimeConfigPath = '$llmDir/$_llmRuntimeConfigFile';
+    if (File(runtimeConfigPath).existsSync()) {
+      return runtimeConfigPath;
+    }
+
+    final defaultConfigPath = '$llmDir/config.json';
+    if (File(defaultConfigPath).existsSync()) {
+      return defaultConfigPath;
+    }
+
+    return runtimeConfigPath;
+  }
+
   Future<void> ensureRuntimeReady(ModelType type) async {
     await initialize();
     final info = models.firstWhere((m) => m.type == type);
@@ -305,21 +326,48 @@ class ModelManager {
 
       for (final file in entry.files) {
         final targetFile = File('${dir.path}/$file');
+        final tempFile = File('${targetFile.path}.part');
         final parentDir = targetFile.parent;
         if (!await parentDir.exists()) {
           await parentDir.create(recursive: true);
         }
 
+        final url = 'https://huggingface.co/${entry.repoId}/resolve/main/$file';
+        final expectedBytes = await _fetchRemoteFileSize(url);
+
         if (await targetFile.exists() && await targetFile.length() > 0) {
-          debugPrint('ModelManager: Skipping ${entry.name}/$file (exists)');
-          continue;
+          final existingBytes = await targetFile.length();
+          if (expectedBytes != null && existingBytes == expectedBytes) {
+            debugPrint('ModelManager: Skipping ${entry.name}/$file (complete)');
+            continue;
+          }
+
+          if (!await tempFile.exists()) {
+            await targetFile.rename(tempFile.path);
+          } else {
+            await _deleteIfExists(targetFile);
+          }
+        }
+
+        if (await tempFile.exists() && expectedBytes != null) {
+          final partialBytes = await tempFile.length();
+          if (partialBytes == expectedBytes) {
+            await tempFile.rename(targetFile.path);
+            debugPrint('ModelManager: Recovered completed partial ${entry.name}/$file');
+            continue;
+          }
+
+          if (partialBytes > expectedBytes) {
+            await _deleteIfExists(tempFile);
+          }
         }
 
         downloads.add(_PlannedDownload(
           model: entry,
           file: file,
           targetFile: targetFile,
-          url: 'https://huggingface.co/${entry.repoId}/resolve/main/$file',
+          url: url,
+          expectedBytes: expectedBytes,
         ));
       }
     }
@@ -434,30 +482,14 @@ class ModelManager {
         currentFileProgress: 0,
       ));
 
-      await _dio.download(
-        download.url,
-        download.targetFile.path,
+      await _downloadPlannedFile(
+        download,
+        completedFiles: completedFiles,
+        totalFiles: totalFiles,
         cancelToken: cancelToken,
-        onReceiveProgress: (received, total) {
-          final currentFileProgress = total > 0 ? received / total : 0.0;
-          final overallProgress =
-              (completedFiles + currentFileProgress) / totalFiles;
-
-          _progressController.add(DownloadProgress(
-            bytesReceived: received,
-            totalBytes: total,
-            progress: overallProgress.clamp(0.0, 1.0),
-            currentFile: download.file,
-            modelName: download.model.name,
-            completedFiles: completedFiles,
-            totalFiles: totalFiles,
-            currentFileProgress: currentFileProgress.clamp(0.0, 1.0),
-          ));
-        },
       );
 
-      if (!await download.targetFile.exists() ||
-          await download.targetFile.length() == 0) {
+      if (!await download.targetFile.exists() || await download.targetFile.length() == 0) {
         throw Exception(
           'Downloaded file is empty: ${download.model.name}/${download.file}',
         );
@@ -475,6 +507,94 @@ class ModelManager {
         currentFileProgress: 1,
       ));
     }
+  }
+
+  Future<int?> _fetchRemoteFileSize(String url) async {
+    try {
+      final response = await _dio.head<void>(
+        url,
+        options: Options(
+          validateStatus: (status) => status != null && status >= 200 && status < 400,
+        ),
+      );
+
+      final headerValue = response.headers.value(Headers.contentLengthHeader) ??
+          response.headers.value('x-linked-size');
+      return int.tryParse(headerValue ?? '');
+    } catch (error) {
+      debugPrint('ModelManager: Failed to fetch remote size for $url: $error');
+      return null;
+    }
+  }
+
+  Future<void> _downloadPlannedFile(
+    _PlannedDownload download, {
+    required int completedFiles,
+    required int totalFiles,
+    CancelToken? cancelToken,
+  }) async {
+    final tempFile = File('${download.targetFile.path}.part');
+    final existingBytes = await tempFile.exists() ? await tempFile.length() : 0;
+    final expectedBytes = download.expectedBytes ?? 0;
+
+    final response = await _dio.get<ResponseBody>(
+      download.url,
+      cancelToken: cancelToken,
+      options: Options(
+        responseType: ResponseType.stream,
+        headers: existingBytes > 0 ? {'Range': 'bytes=$existingBytes-'} : null,
+        validateStatus: (status) => status == 200 || status == 206,
+      ),
+    );
+
+    final responseBody = response.data;
+    if (responseBody == null) {
+      throw Exception('Download response body missing for ${download.file}');
+    }
+
+    final sink = tempFile.openWrite(
+      mode: existingBytes > 0 ? FileMode.append : FileMode.write,
+    );
+
+    var receivedThisSession = 0;
+    try {
+      await for (final chunk in responseBody.stream) {
+        sink.add(chunk);
+        receivedThisSession += chunk.length;
+
+        final bytesReceived = existingBytes + receivedThisSession;
+        final totalBytes = expectedBytes > 0 ? expectedBytes : bytesReceived;
+        final currentFileProgress = totalBytes > 0 ? bytesReceived / totalBytes : 0.0;
+        final overallProgress = (completedFiles + currentFileProgress) / totalFiles;
+
+        _progressController.add(DownloadProgress(
+          bytesReceived: bytesReceived,
+          totalBytes: totalBytes,
+          progress: overallProgress.clamp(0.0, 1.0),
+          currentFile: download.file,
+          modelName: download.model.name,
+          completedFiles: completedFiles,
+          totalFiles: totalFiles,
+          currentFileProgress: currentFileProgress.clamp(0.0, 1.0),
+        ));
+      }
+    } finally {
+      await sink.flush();
+      await sink.close();
+    }
+
+    final finalBytes = await tempFile.length();
+    if (download.expectedBytes != null && finalBytes != download.expectedBytes) {
+      throw Exception(
+        'Downloaded file incomplete: ${download.model.name}/${download.file} '
+        '($finalBytes/${download.expectedBytes} bytes)',
+      );
+    }
+
+    if (await download.targetFile.exists()) {
+      await download.targetFile.delete();
+    }
+    await tempFile.rename(download.targetFile.path);
   }
 
   /// Delete all models

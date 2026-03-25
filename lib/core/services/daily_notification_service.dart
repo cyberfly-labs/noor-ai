@@ -6,19 +6,16 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'database_service.dart';
+import 'vector_store_service.dart' show EmotionalVerse, kEmotionalVerses;
 
-/// Manages a daily Quran reading reminder notification.
-///
-/// The notification is scheduled to repeat every day at a user-chosen time.
-/// When the user opens the notification the app navigates to the Daily Ayah
-/// page.
+/// Manages a daily Quran emotional comfort / motivation notification.
 class DailyNotificationService {
   DailyNotificationService._();
   static final DailyNotificationService instance = DailyNotificationService._();
 
   static const _channelId = 'noor_daily_reminder';
-  static const _channelName = 'Daily Quran Reminder';
-  static const _channelDescription = 'Daily notification reminding you to read Quran';
+  static const _channelName = 'Daily Quran Comfort';
+  static const _channelDescription = 'Daily emotional comfort and motivation from Quran';
   static const _notificationId = 1001;
 
   static const _prefEnabled = 'daily_notification_enabled';
@@ -43,7 +40,12 @@ class DailyNotificationService {
   // ── Initialization ─────────────────────────────────────────────────
 
   Future<void> initialize() async {
-    if (_initialized) return;
+    if (_initialized) {
+      if (_enabled) {
+        await _scheduleDaily();
+      }
+      return;
+    }
     _initialized = true;
 
     tz.initializeTimeZones();
@@ -124,13 +126,13 @@ class DailyNotificationService {
     }
   }
 
-  /// Show an immediate test notification with today's daily ayah.
+  /// Show an immediate test notification with today's emotional ayah.
   Future<void> showTestNotification() async {
-    final body = await _todayAyahBody();
+    final content = await _dailyNotificationContent(DateTime.now());
     await _plugin.show(
       id: _notificationId + 1,
-      title: 'Time to Read Quran',
-      body: body,
+      title: content.title,
+      body: content.body,
       notificationDetails: _notificationDetails(),
     );
   }
@@ -146,17 +148,16 @@ class DailyNotificationService {
 
   Future<void> _scheduleDaily() async {
     await _plugin.cancel(id: _notificationId);
-
-    final body = await _todayAyahBody();
+    final scheduledDate = _nextInstanceOfTime(_hour, _minute);
+    final content = await _dailyNotificationContent(scheduledDate);
 
     await _plugin.zonedSchedule(
       id: _notificationId,
-      title: 'Time to Read Quran',
-      body: body,
-      scheduledDate: _nextInstanceOfTime(_hour, _minute),
+      title: content.title,
+      body: content.body,
+      scheduledDate: scheduledDate,
       notificationDetails: _notificationDetails(),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 
@@ -187,19 +188,88 @@ class DailyNotificationService {
     return scheduled;
   }
 
-  Future<String> _todayAyahBody() async {
+  Future<_NotificationContent> _dailyNotificationContent(DateTime day) async {
+    final seededVerse = _dailyEmotionalVerse(day);
+    final fallback = _buildNotificationFromSeed(seededVerse);
+
     try {
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      final daily = await DatabaseService.instance.getDailyAyah(today);
+      final dateKey = _dateOnly(day);
+      final daily = await DatabaseService.instance.getDailyAyah(dateKey);
       final text = daily?.translationText;
       if (text != null && text.isNotEmpty) {
-        final translation = text.length > 120
-            ? '${text.substring(0, 117)}...'
-            : text;
-        return '${daily!.verseKey} — $translation';
+        final verseKey = daily!.verseKey;
+        return _NotificationContent(
+          title: _titleForVerse(seededVerse),
+          body: '$verseKey — ${_truncate(text, 150)}',
+        );
       }
     } catch (_) {}
-    return 'Open Noor AI to read your verse for today.';
+
+    return fallback;
+  }
+
+  EmotionalVerse _dailyEmotionalVerse(DateTime day) {
+    final date = DateTime(day.year, day.month, day.day);
+    final index = date.difference(DateTime(2026, 1, 1)).inDays.abs() %
+        kEmotionalVerses.length;
+    return kEmotionalVerses[index];
+  }
+
+  _NotificationContent _buildNotificationFromSeed(EmotionalVerse verse) {
+    return _NotificationContent(
+      title: _titleForVerse(verse),
+      body: '${verse.verseKey} — ${_truncate(verse.translationText, 150)}',
+    );
+  }
+
+  String _titleForVerse(EmotionalVerse verse) {
+    switch (verse.category) {
+      case 'gratitude_blessings':
+        return 'Daily Quran gratitude';
+      case 'comfort_relief':
+        return 'Comfort & relief from hardship';
+      case 'calm_peace':
+        return 'Calmness & peace of heart';
+      case 'hope_trust':
+        return 'Hope & trust in Allah';
+      case 'mercy_forgiveness':
+        return 'Mercy & forgiveness';
+      case 'patience_strength':
+        return 'Patience & strength';
+    }
+
+    final emotion = verse.emotion;
+    if (emotion.contains('grateful') || emotion.contains('thankful')) {
+      return 'Daily Quran gratitude';
+    }
+    if (emotion.contains('hopeless') || emotion.contains('sadness')) {
+      return 'Daily Quran comfort';
+    }
+    if (emotion.contains('anxiety') || emotion.contains('fear')) {
+      return 'Calm for your heart';
+    }
+    if (emotion.contains('patience') || emotion.contains('perseverance')) {
+      return 'Daily Quran motivation';
+    }
+    if (emotion.contains('guilt') || emotion.contains('sin')) {
+      return 'Mercy and hope from Quran';
+    }
+    return 'Daily comfort from Quran';
+  }
+
+  String _truncate(String text, int maxChars) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxChars - 3)}...';
+  }
+
+  String _dateOnly(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final dayValue = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$dayValue';
   }
 
   String _guessTimeZone() {
@@ -239,4 +309,14 @@ class DailyNotificationService {
       return 'UTC';
     }
   }
+}
+
+class _NotificationContent {
+  final String title;
+  final String body;
+
+  const _NotificationContent({
+    required this.title,
+    required this.body,
+  });
 }

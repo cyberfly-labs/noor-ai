@@ -16,6 +16,7 @@
 #include <android/log.h>
 #endif
 #include <cstring>
+#include <algorithm>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -158,6 +159,30 @@ ZvecStatus zvec_open_collection(const char *path, ZvecCollection *out) {
 
   zvec::CollectionOptions options;
   auto result = zvec::Collection::Open(path, options);
+
+  if (!result.has_value()) {
+    std::string message = result.error().message();
+    std::string lowered = message;
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (lowered.find("lock") != std::string::npos) {
+      LOGI("Writable open failed due to lock issue, retrying read-only: %s",
+           message.c_str());
+      zvec::CollectionOptions read_only_options(/*read_only=*/true,
+                                                /*enable_mmap=*/true);
+      auto read_only_result = zvec::Collection::Open(path, read_only_options);
+      if (read_only_result.has_value()) {
+        LOGI("Opened collection at %s in read-only mode", path);
+        *out = new ZvecCollectionImpl{read_only_result.value()};
+        return ZVEC_OK;
+      }
+
+      LOGE("Read-only retry also failed at %s: %s", path,
+           read_only_result.error().message().c_str());
+      return convert_status(read_only_result.error());
+    }
+  }
 
   if (!result.has_value()) {
     LOGE("Failed to open collection at %s: %s", path,

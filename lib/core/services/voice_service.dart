@@ -40,6 +40,7 @@ class VoiceService {
   static const double _minPlaybackVolume = 0.6;
   static const double _maxPlaybackVolume = 1.0;
   static const int _maxTtsChunkLength = 220;
+  static const int _maxSinglePassTtsLength = 1800;
   static const List<TtsVoiceOption> _supportedTtsVoices = <TtsVoiceOption>[
     TtsVoiceOption(
       id: 'F1',
@@ -398,44 +399,47 @@ class VoiceService {
     try {
       await _player.stop();
 
-      for (var i = 0; i < pendingChunks.length; i += 1) {
-        final chunk = pendingChunks[i];
+      final wholeResponseWavPath = await _synthesizeWholeResponse(
+        spokenText,
+        sessionId,
+      );
+      if (wholeResponseWavPath != null) {
+        await _playSynthesizedFile(wholeResponseWavPath, sessionId);
+        return;
+      }
+
+      Future<_SynthesizedChunk?>? nextChunkFuture;
+      while (pendingChunks.isNotEmpty) {
         if (_stopPlaybackRequested || sessionId != _playbackSessionId) {
           break;
         }
 
-        final wavPath = await synthesize(chunk);
-        if (wavPath == null || sessionId != _playbackSessionId) {
-          final splitChunks = _splitFailedSynthesisChunk(chunk);
-          if (splitChunks != null) {
-            pendingChunks
-              ..removeAt(i)
-              ..insertAll(i, splitChunks);
-            i -= 1;
-            continue;
-          }
-          debugPrint('VoiceService: Skipping unsynthesizable chunk (${chunk.length} chars)');
+        final chunk = pendingChunks.removeAt(0);
+        nextChunkFuture ??= _prepareSynthesizedChunk(chunk, sessionId);
+        final preparedChunk = await nextChunkFuture;
+        nextChunkFuture = null;
+
+        if (preparedChunk == null || sessionId != _playbackSessionId) {
           continue;
         }
 
-        if (!await _waitForWavFile(wavPath) || sessionId != _playbackSessionId) {
+        if (preparedChunk.replacementChunks.isNotEmpty) {
+          pendingChunks.insertAll(0, preparedChunk.replacementChunks);
           continue;
         }
 
-        try {
-          // Reset player state from completed → idle before loading the next
-          // chunk; avoids just_audio Android/iOS state-machine quirks.
-          await _player.stop();
-          if (sessionId != _playbackSessionId) break;
-
-          await _player.setFilePath(wavPath);
-          await _player.setVolume(_playbackVolume);
-          await _player.play();
-          await _waitForPlaybackEnd(sessionId);
-        } catch (e) {
-          debugPrint('VoiceService: chunk playback error: $e');
-          // continue to the next chunk rather than aborting the whole response
+        if (preparedChunk.wavPath == null) {
+          continue;
         }
+
+        if (pendingChunks.isNotEmpty) {
+          nextChunkFuture = _prepareSynthesizedChunk(
+            pendingChunks.first,
+            sessionId,
+          );
+        }
+
+        await _playSynthesizedFile(preparedChunk.wavPath!, sessionId);
       }
     } finally {
       if (sessionId == _playbackSessionId) {
@@ -702,6 +706,72 @@ class VoiceService {
     return false;
   }
 
+  Future<String?> _synthesizeWholeResponse(String text, int sessionId) async {
+    if (text.length > _maxSinglePassTtsLength) {
+      return null;
+    }
+
+    final wavPath = await synthesize(text);
+    if (wavPath == null || sessionId != _playbackSessionId) {
+      return null;
+    }
+
+    if (!await _waitForWavFile(wavPath) || sessionId != _playbackSessionId) {
+      return null;
+    }
+
+    return wavPath;
+  }
+
+  Future<_SynthesizedChunk?> _prepareSynthesizedChunk(
+    String chunk,
+    int sessionId,
+  ) async {
+    if (_stopPlaybackRequested || sessionId != _playbackSessionId) {
+      return null;
+    }
+
+    final wavPath = await synthesize(chunk);
+    if (wavPath == null || sessionId != _playbackSessionId) {
+      final splitChunks = _splitFailedSynthesisChunk(chunk);
+      if (splitChunks != null) {
+        return _SynthesizedChunk(replacementChunks: splitChunks);
+      }
+      debugPrint(
+        'VoiceService: Skipping unsynthesizable chunk (${chunk.length} chars)',
+      );
+      return const _SynthesizedChunk();
+    }
+
+    if (!await _waitForWavFile(wavPath) || sessionId != _playbackSessionId) {
+      return const _SynthesizedChunk();
+    }
+
+    return _SynthesizedChunk(wavPath: wavPath);
+  }
+
+  Future<void> _playSynthesizedFile(String wavPath, int sessionId) async {
+    if (_stopPlaybackRequested || sessionId != _playbackSessionId) {
+      return;
+    }
+
+    try {
+      // Reset player state from completed → idle before loading the next
+      // chunk; avoids just_audio Android/iOS state-machine quirks.
+      await _player.stop();
+      if (sessionId != _playbackSessionId) {
+        return;
+      }
+
+      await _player.setFilePath(wavPath);
+      await _player.setVolume(_playbackVolume);
+      await _player.play();
+      await _waitForPlaybackEnd(sessionId);
+    } catch (e) {
+      debugPrint('VoiceService: chunk playback error: $e');
+    }
+  }
+
   void dispose() {
     _recorder.dispose();
     _player.dispose();
@@ -761,4 +831,14 @@ class VoiceService {
     }
     return _defaultTtsVoiceId;
   }
+}
+
+class _SynthesizedChunk {
+  const _SynthesizedChunk({
+    this.wavPath,
+    this.replacementChunks = const <String>[],
+  });
+
+  final String? wavPath;
+  final List<String> replacementChunks;
 }

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
-import 'package:animate_do/animate_do.dart';
 
 import '../../../core/models/verse.dart';
 import '../../../core/theme/app_theme.dart';
@@ -21,6 +20,50 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  static const List<({String label, String prompt, IconData icon})>
+      _feelingPrompts = [
+    (
+      label: 'Anxious',
+      prompt: 'I feel anxious',
+      icon: Icons.favorite_outline,
+    ),
+    (
+      label: 'Happy',
+      prompt: 'I feel happy',
+      icon: Icons.wb_sunny_outlined,
+    ),
+    (
+      label: 'Guilty',
+      prompt: 'I feel guilty and regretful',
+      icon: Icons.hourglass_empty_rounded,
+    ),
+    (
+      label: 'Grateful',
+      prompt: 'I feel grateful',
+      icon: Icons.volunteer_activism_outlined,
+    ),
+    (
+      label: 'Lonely',
+      prompt: 'I feel lonely',
+      icon: Icons.person_outline_rounded,
+    ),
+    (
+      label: 'Lost',
+      prompt: 'I feel lost',
+      icon: Icons.explore_outlined,
+    ),
+    (
+      label: 'Overwhelmed',
+      prompt: 'I feel overwhelmed',
+      icon: Icons.waves_outlined,
+    ),
+    (
+      label: 'Sad',
+      prompt: 'I feel sad',
+      icon: Icons.cloud_outlined,
+    ),
+  ];
+
   final _textController = TextEditingController();
   final _responseScrollController = ScrollController();
   final _popupScrollController = ScrollController();
@@ -132,105 +175,92 @@ class _HomePageState extends ConsumerState<HomePage> {
             bottom: false,
             child: Column(
               children: [
-            // ── Header ─────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-              child: FadeInDown(
-                duration: const Duration(milliseconds: 500),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: AppColors.goldGradient,
-                      ),
-                      child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF060B11)),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Noor AI',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
-                              ),
-                        ),
-                        Text(
-                          'Your Quran Companion',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppColors.textMuted,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── Response area ──────────────────────────
-            Expanded(
-              child: _buildResponseArea(state),
-            ),
-
-            if (!keyboardOpen) ...[
-              // Voice button
-              FadeInUp(
-                duration: const Duration(milliseconds: 500),
-                child: AnimatedVoiceButton(
-                  state: state.voiceState,
-                  onTap: () => ref.read(homeProvider.notifier).toggleVoice(),
-                ),
-              ),
-
-              // Status text
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
-                  child: Text(
-                    _statusText(state.voiceState),
-                    key: ValueKey(state.voiceState),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: state.voiceState == VoiceState.idle
-                              ? AppColors.textMuted
-                              : AppColors.gold.withValues(alpha: 0.85),
-                          fontWeight: state.voiceState == VoiceState.idle
-                              ? FontWeight.w500
-                              : FontWeight.w600,
-                        ),
-                  ),
-                ),
-              ),
-
-              // ASR transcription
-              if (state.transcription != null && state.transcription!.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '"${state.transcription}"',
-                      textAlign: TextAlign.center,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary.withValues(alpha: 0.8),
-                            fontStyle: FontStyle.italic,
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: AppColors.goldGradient,
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF060B11)),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Noor AI',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
                           ),
-                    ),
+                          Text(
+                            'Your Quran Companion',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textMuted,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-            ],
+
+                Expanded(
+                  child: _buildResponseArea(state),
+                ),
+
+                if (!keyboardOpen) ...[
+                  AnimatedVoiceButton(
+                    state: state.voiceState,
+                    onTap: () => ref.read(homeProvider.notifier).toggleVoice(),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      child: Text(
+                        _statusText(state.voiceState),
+                        key: ValueKey(state.voiceState),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: state.voiceState == VoiceState.idle
+                                  ? AppColors.textMuted
+                                  : AppColors.gold.withValues(alpha: 0.85),
+                              fontWeight: state.voiceState == VoiceState.idle
+                                  ? FontWeight.w500
+                                  : FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ),
+                  if (state.transcription != null && state.transcription!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '"${state.transcription}"',
+                          textAlign: TextAlign.center,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppColors.textSecondary.withValues(alpha: 0.8),
+                                fontStyle: FontStyle.italic,
+                              ),
+                        ),
+                      ),
+                    ),
+                ],
 
             // ── Text input ────────────────────────────
             Container(
@@ -341,18 +371,9 @@ class _HomePageState extends ConsumerState<HomePage> {
       );
     }
 
-    // Inline response (visible when popup is dismissed or alongside it)
+    // Keep the home body clean. Answers are shown in the popup only.
     if (state.response != null && state.response!.isNotEmpty) {
-      return GestureDetector(
-        onTap: () {
-          if (!_isAnswerPopupVisible) _showAnswerPopup();
-        },
-        child: SingleChildScrollView(
-          controller: _isAnswerPopupVisible ? null : _responseScrollController,
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          child: _buildAnswerContent(state),
-        ),
-      );
+      return _buildFeelingChooser();
     }
 
     // Processing state — response hasn't arrived yet
@@ -389,6 +410,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     // Empty state
+    return _buildFeelingChooser();
+  }
+
+  Widget _buildFeelingChooser() {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -415,7 +440,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Assalamu Alaikum',
+                    'How are you feeling today?',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
@@ -423,7 +448,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Tap the mic or type to ask\nabout the Quran',
+                    'Choose a feeling and Noor will bring Quran-based comfort, perspective, or gratitude reminders.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.textMuted,
@@ -434,13 +459,25 @@ class _HomePageState extends ConsumerState<HomePage> {
                   const SizedBox(height: 28),
                   Wrap(
                     alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 10,
-                    children: [
-                      _quickPromptChip('Explain Ayat-ul-Kursi', Icons.menu_book_outlined),
-                      _quickPromptChip('Verses for anxiety', Icons.favorite_outline),
-                      _quickPromptChip('Meaning of Surah Mulk', Icons.auto_stories_outlined),
-                    ],
+                    spacing: 10,
+                    runSpacing: 12,
+                    children: _feelingPrompts
+                        .map(
+                          (item) => _quickPromptChip(
+                            item.label,
+                            item.icon,
+                            prompt: item.prompt,
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'You can still type your own question below.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textMuted.withValues(alpha: 0.82),
+                        ),
                   ),
                 ],
               ),
@@ -586,12 +623,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                   ),
                                 ],
                               ),
-                              child: KeyedSubtree(
-                                key: ValueKey(
-                                  'popup-${state.response?.length ?? 0}-${state.isStreaming}-${state.citations.length}-${state.currentVerse?.verseKey ?? 'none'}',
-                                ),
                                 child: _buildAnswerContent(state),
-                              ),
                             ),
                           ),
                         ),
@@ -659,66 +691,64 @@ class _HomePageState extends ConsumerState<HomePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.currentVerse != null)
-          FadeIn(
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 20),
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.card,
-                    AppColors.gold.withValues(alpha: 0.04),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    state.currentVerse!.arabicText ?? '',
-                    style: const TextStyle(
-                      fontSize: 26,
-                      color: AppColors.gold,
-                      height: 2.1,
-                    ),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    state.currentVerse!.translationText ?? '',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      fontStyle: FontStyle.italic,
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.gold.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      state.currentVerse!.verseKey,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.gold,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _buildVerseActions(state.currentVerse!),
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.card,
+                  AppColors.gold.withValues(alpha: 0.04),
                 ],
               ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  state.currentVerse!.arabicText ?? '',
+                  style: const TextStyle(
+                    fontSize: 26,
+                    color: AppColors.gold,
+                    height: 2.1,
+                  ),
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  state.currentVerse!.translationText ?? '',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    state.currentVerse!.verseKey,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.gold,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _buildVerseActions(state.currentVerse!),
+              ],
             ),
           ),
         if (state.isStreaming)
@@ -731,25 +761,23 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           )
         else
-          FadeIn(
-            child: MarkdownBody(
-              selectable: true,
-              data: state.response!,
-              styleSheet: MarkdownStyleSheet(
-                p: const TextStyle(color: AppColors.textPrimary, fontSize: 15, height: 1.65),
-                strong: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700),
-                h1: TextStyle(color: AppColors.gold, fontSize: 20, fontWeight: FontWeight.w700),
-                h2: TextStyle(color: AppColors.gold, fontSize: 17, fontWeight: FontWeight.w700),
-                blockquoteDecoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border(left: BorderSide(color: AppColors.gold, width: 3)),
-                ),
-                blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                codeblockDecoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(10),
-                ),
+          MarkdownBody(
+            selectable: true,
+            data: state.response!,
+            styleSheet: MarkdownStyleSheet(
+              p: const TextStyle(color: AppColors.textPrimary, fontSize: 15, height: 1.65),
+              strong: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700),
+              h1: TextStyle(color: AppColors.gold, fontSize: 20, fontWeight: FontWeight.w700),
+              h2: TextStyle(color: AppColors.gold, fontSize: 17, fontWeight: FontWeight.w700),
+              blockquoteDecoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(10),
+                border: Border(left: BorderSide(color: AppColors.gold, width: 3)),
+              ),
+              blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              codeblockDecoration: BoxDecoration(
+                color: AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
           ),
@@ -820,31 +848,29 @@ class _HomePageState extends ConsumerState<HomePage> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          citation.verseKey,
-                          style: const TextStyle(
-                            color: AppColors.gold,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          citation.sourceLabel,
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              citation.quranSourceLabel,
+                              style: const TextStyle(
+                                color: AppColors.gold,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tafsir: ${citation.tafsirSourceLabel}',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                       ),
                       Icon(
@@ -867,6 +893,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap to open full Quran verse and tafsir',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -947,11 +982,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     ref.read(homeProvider.notifier).processTextInput(trimmed);
   }
 
-  Widget _quickPromptChip(String text, IconData icon) {
+  Widget _quickPromptChip(String text, IconData icon, {String? prompt}) {
     return GestureDetector(
       onTap: () {
-        _textController.text = text;
-        _sendText(text);
+        final resolvedPrompt = prompt ?? text;
+        _textController.text = resolvedPrompt;
+        _sendText(resolvedPrompt);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

@@ -21,6 +21,8 @@ import '../../../core/utils/prompt_templates.dart';
 
 const _uuid = Uuid();
 const _unset = Object();
+const _strictGroundingFailureMessage =
+  'I could not find this in the provided Quran or Tafsir المصادر.';
 
 /// Voice pipeline state
 enum VoiceState { idle, listening, processing, speaking }
@@ -464,16 +466,20 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return;
     }
 
-    // Keep grounding compact to reduce first-token latency on mobile devices.
-    final allEvidenceBlocks = evidence
-      .take(2)
-      .map((item) => item.promptBlock)
-      .toList(growable: false);
+    final allEvidenceBlocks = <String>[
+      for (var index = 0; index < evidence.length; index += 1)
+        '[EVIDENCE ${index + 1}]\n${evidence[index].promptBlock}',
+    ];
+    final verseReferences = evidence
+        .map((item) => item.verseKey)
+        .toList(growable: false);
 
     // Pass rawText (user's language) as the question so LLM responds in kind.
     final prompt = PromptTemplates.groundedGeneralQuestion(
       question: intent.rawText,
+      retrievalQuery: ragQuery,
       evidenceBlocks: allEvidenceBlocks,
+      verseReferences: verseReferences,
     );
     await _streamLlmResponse(
       prompt,
@@ -485,7 +491,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
   Future<List<_GroundedVerseEvidence>> _buildGlobalQuestionEvidence(
     String rawQuery,
   ) async {
-    final evidence = await _quranRag.retrieveGroundedEvidence(rawQuery, limit: 3);
+    final evidence = await _quranRag.retrieveGroundedEvidence(rawQuery, limit: 5);
     return evidence
         .map((item) => _GroundedVerseEvidence(
               verseKey: item.verseKey,
@@ -618,7 +624,15 @@ class HomeNotifier extends StateNotifier<HomeState> {
       }
     }
 
-    final fullResponse = buffer.toString();
+    final rawResponse = buffer.toString();
+    final repairedResponse = _repairGroundedVerseCoverage(
+      rawResponse,
+      citations,
+    );
+    final fullResponse = _enforceStrictGrounding(
+      repairedResponse,
+      citations,
+    );
     state = state.copyWith(
       isStreaming: false,
       voiceState: VoiceState.idle,
@@ -658,6 +672,125 @@ class HomeNotifier extends StateNotifier<HomeState> {
         state = state.copyWith(voiceState: VoiceState.idle);
       }
     }
+  }
+
+  String _repairGroundedVerseCoverage(
+    String response,
+    List<GroundingCitation> citations,
+  ) {
+    final distinctCitations = <GroundingCitation>[];
+    final seenVerseKeys = <String>{};
+    for (final citation in citations) {
+      final verseKey = citation.verseKey.trim();
+      if (verseKey.isEmpty || !seenVerseKeys.add(verseKey)) {
+        continue;
+      }
+      distinctCitations.add(citation);
+    }
+
+    if (distinctCitations.length < 2) {
+      return response;
+    }
+
+    final citedVerseKeys = _extractReferencedVerseKeys(
+      response,
+      seenVerseKeys,
+    );
+    if (citedVerseKeys.length >= 2) {
+      return response;
+    }
+
+    final repairedQuranSection = _buildGroundedQuranSection(
+      distinctCitations.take(3).toList(growable: false),
+    );
+    if (repairedQuranSection.isEmpty) {
+      return response;
+    }
+
+    final quranSectionPattern = RegExp(
+      r'📖\s*\*\*Quran:\*\*\s*(.*?)(?=\n\s*📚\s*\*\*Explanation:\*\*|$)',
+      dotAll: true,
+    );
+    if (quranSectionPattern.hasMatch(response)) {
+      return response.replaceFirst(
+        quranSectionPattern,
+        '📖 **Quran:**\n$repairedQuranSection\n\n',
+      );
+    }
+
+    if (response.trim().isEmpty) {
+      return '📖 **Quran:**\n$repairedQuranSection';
+    }
+
+    return '📖 **Quran:**\n$repairedQuranSection\n\n${response.trim()}';
+  }
+
+  String _enforceStrictGrounding(
+    String response,
+    List<GroundingCitation> citations,
+  ) {
+    if (citations.isEmpty) {
+      return response;
+    }
+
+    final allowedVerseKeys = citations
+        .map((citation) => citation.verseKey.trim())
+        .where((verseKey) => verseKey.isNotEmpty)
+        .toSet();
+    if (allowedVerseKeys.isEmpty) {
+      return response;
+    }
+
+    final referencedVerseKeys = _extractAllVerseKeys(response);
+    final unsupportedVerseKeys = referencedVerseKeys.difference(allowedVerseKeys);
+    if (unsupportedVerseKeys.isEmpty) {
+      return response;
+    }
+
+    debugPrint(
+      'HomeNotifier: rejecting unsupported grounded verse refs '
+      '${unsupportedVerseKeys.join(', ')}',
+    );
+    return _strictGroundingFailureMessage;
+  }
+
+  Set<String> _extractReferencedVerseKeys(
+    String response,
+    Set<String> allowedVerseKeys,
+  ) {
+    final matches = RegExp(r'\b\d{1,3}:\d{1,3}\b').allMatches(response);
+    final found = <String>{};
+    for (final match in matches) {
+      final verseKey = match.group(0);
+      if (verseKey != null && allowedVerseKeys.contains(verseKey)) {
+        found.add(verseKey);
+      }
+    }
+    return found;
+  }
+
+  Set<String> _extractAllVerseKeys(String response) {
+    final matches = RegExp(r'\b\d{1,3}:\d{1,3}\b').allMatches(response);
+    final found = <String>{};
+    for (final match in matches) {
+      final verseKey = match.group(0);
+      if (verseKey != null) {
+        found.add(verseKey);
+      }
+    }
+    return found;
+  }
+
+  String _buildGroundedQuranSection(List<GroundingCitation> citations) {
+    final lines = <String>[];
+    for (final citation in citations) {
+      final excerpt = citation.excerpt?.trim() ?? '';
+      if (excerpt.isEmpty) {
+        continue;
+      }
+      lines.add('- ${citation.verseKey}: "$excerpt"');
+    }
+    return lines.join('\n');
   }
 
   /// Stop everything
@@ -703,4 +836,9 @@ class GroundingCitation {
   final String verseKey;
   final String sourceLabel;
   final String? excerpt;
+
+  String get quranSourceLabel => 'Quran $verseKey';
+
+  String get tafsirSourceLabel =>
+      sourceLabel.trim().isEmpty ? 'Retrieved tafsir' : sourceLabel.trim();
 }

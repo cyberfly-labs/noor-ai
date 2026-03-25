@@ -136,6 +136,28 @@ On first launch, go to **Settings → Download Models** to fetch the on-device A
 | Qwen3.5-0.8B-MNN | ~500 MB | Question answering |
 | bge-small-en-v1.5-mnn | ~30 MB | Text embeddings |
 
+### Prebuilt Vector DB
+
+The intended runtime path is to ship a prebuilt zvec bundle in `assets/vector_db/` and let the app copy it into the models directory on startup.
+
+The app should not rebuild the full Quran + tafsir corpus on device. If you need to refresh the vector DB, build it on macOS and restage `assets/vector_db/` before running the app:
+
+```bash
+source .venv/bin/activate
+python tools/build_vector_db.py \
+    --embedding-dir "$HOME/.noor-ai/models/embedding" \
+    --assets-db-dir assets/db \
+    --output-dir build/vector_db/zvec_db \
+    --bundle-dir assets/vector_db \
+    --version quran-tafsir-v3
+```
+
+Notes:
+
+- `--embedding-dir` must point at the local embedding model directory containing `embedding.mnn` and `tokenizer.json`.
+- The script writes the collection to `build/vector_db/zvec_db` and stages a bundle under `assets/vector_db/` with `manifest.json`, `zvec_db_sources.tsv`, and `zvec_db_deleted.txt`.
+- After rebuilding the bundle, run `flutter pub get` if assets changed and then launch the app so it copies the refreshed DB into its runtime models directory.
+
 ### Native Core Setup
 
 The native C++ core (in `native/cpp/`) is preconfigured with:
