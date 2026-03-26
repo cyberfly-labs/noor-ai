@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -49,7 +50,12 @@ class DailyNotificationService {
     _initialized = true;
 
     tz.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation(_guessTimeZone()));
+    try {
+      final tzInfo = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(tzInfo.identifier));
+    } catch (_) {
+      tz.setLocalLocation(tz.getLocation(_guessTimeZone()));
+    }
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwinSettings = DarwinInitializationSettings(
@@ -85,7 +91,10 @@ class DailyNotificationService {
       final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       final granted = await androidPlugin?.requestNotificationsPermission();
-      return granted ?? false;
+      if (granted != true) return false;
+      // Also request exact alarm permission for reliable scheduling.
+      await androidPlugin?.requestExactAlarmsPermission();
+      return true;
     }
     if (Platform.isIOS) {
       final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
@@ -151,13 +160,26 @@ class DailyNotificationService {
     final scheduledDate = _nextInstanceOfTime(_hour, _minute);
     final content = await _dailyNotificationContent(scheduledDate);
 
+    // Determine best schedule mode: exact if permission granted, else inexact.
+    AndroidScheduleMode scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
+    if (Platform.isAndroid) {
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final canExact = await androidPlugin?.canScheduleExactNotifications();
+      if (canExact == true) {
+        scheduleMode = AndroidScheduleMode.exactAllowWhileIdle;
+      }
+    }
+
     await _plugin.zonedSchedule(
       id: _notificationId,
       title: content.title,
       body: content.body,
       scheduledDate: scheduledDate,
       notificationDetails: _notificationDetails(),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: scheduleMode,
+      // Repeat daily at the same time.
+      matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 

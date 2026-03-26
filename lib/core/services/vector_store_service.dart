@@ -486,7 +486,7 @@ class VectorStoreService {
           'db_path': '${ModelManager.instance.modelsPath}/zvec_db',
         },
         'startup': <String, bool>{
-          'prewarm_engines': false,
+          'prewarm_engines': true,
         },
       });
 

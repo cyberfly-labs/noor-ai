@@ -17,7 +17,7 @@ class ShellPage extends StatefulWidget {
 class _ShellPageState extends State<ShellPage> {
   int _currentIndex = 0;
 
-  static const _routes = ['/home', '/quran', '/chat', '/daily-ayah', '/bookmarks', '/settings'];
+  static const _routes = ['/home', '/quran', '/chat', '/daily-ayah', '/bookmarks', '/posts', '/settings'];
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +88,8 @@ class _ShellPageState extends State<ShellPage> {
       case 4:
         return active ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded;
       case 5:
+        return active ? Icons.article_rounded : Icons.article_outlined;
+      case 6:
         return active ? Icons.settings_rounded : Icons.settings_outlined;
       default:
         return Icons.circle;
@@ -107,6 +109,8 @@ class _ShellPageState extends State<ShellPage> {
       case 4:
         return 'Saved';
       case 5:
+        return 'Posts';
+      case 6:
         return 'Settings';
       default:
         return '';

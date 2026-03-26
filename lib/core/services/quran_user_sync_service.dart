@@ -284,6 +284,133 @@ class QuranUserSyncService {
     return headers;
   }
 
+  // ── Posts (Notes with saveToQR=true → publishes to QuranReflect) ────────
+
+  /// Create and publish an LLM response as a post on QuranReflect.
+  ///
+  /// [body] is the text content (6–10000 chars).
+  /// [verseKeys] are Quran citation keys in "surah:ayah" format (e.g. "2:255").
+  /// Returns the created [QFPost] or null on failure.
+  Future<QFPost?> createPost({
+    required String body,
+    List<String> verseKeys = const [],
+  }) async {
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      return null;
+    }
+
+    final trimmed = body.trim();
+    if (trimmed.length < 6) {
+      return null;
+    }
+
+    // API expects ranges in "surah:ayah-surah:ayah" format.
+    final ranges = verseKeys
+        .map((k) => k.trim())
+        .where((k) => k.contains(':'))
+        .map((k) => '$k-$k')
+        .toList(growable: false);
+
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '${config.userApiBaseUrl}/notes',
+        data: <String, dynamic>{
+          'body': trimmed.length > 10000 ? trimmed.substring(0, 10000) : trimmed,
+          'saveToQR': true,
+          if (ranges.isNotEmpty) 'ranges': ranges,
+        },
+        options: Options(
+          headers: <String, String>{
+            ...headers,
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if ((response.statusCode ?? 0) >= 400) {
+        debugPrint('UserSync: createPost failed status=${response.statusCode}');
+        return null;
+      }
+
+      final data = response.data?['data'];
+      if (data is Map<String, dynamic>) {
+        return _postFromRemote(data);
+      }
+      // Some environments wrap in a list
+      if (data is List && data.isNotEmpty) {
+        return _postFromRemote((data.first as Map).cast<String, dynamic>());
+      }
+      // Success but no body — treat as ok with stub
+      return QFPost(id: '', body: trimmed, createdAt: DateTime.now());
+    } catch (error) {
+      debugPrint('UserSync: Failed to create post: $error');
+      return null;
+    }
+  }
+
+  /// Fetch the signed-in user's published notes/posts (newest first).
+  Future<List<QFPost>> listPosts({int limit = 20}) async {
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      return const <QFPost>[];
+    }
+
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '${config.userApiBaseUrl}/notes',
+        queryParameters: <String, dynamic>{
+          'limit': limit,
+          'sortBy': 'newest',
+        },
+        options: Options(headers: headers),
+      );
+
+      final items = (response.data?['data'] as List?) ?? const <dynamic>[];
+      return items
+          .map((item) => _postFromRemote((item as Map).cast<String, dynamic>()))
+          .whereType<QFPost>()
+          .toList(growable: false);
+    } catch (error) {
+      debugPrint('UserSync: Failed to fetch posts: $error');
+      return const <QFPost>[];
+    }
+  }
+
+  /// Delete a published note/post by its ID.
+  Future<bool> deletePost(String noteId) async {
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      return false;
+    }
+
+    try {
+      final response = await _dio.delete<Map<String, dynamic>>(
+        '${config.userApiBaseUrl}/notes/$noteId',
+        options: Options(headers: headers),
+      );
+      return (response.statusCode ?? 0) < 400;
+    } catch (error) {
+      debugPrint('UserSync: Failed to delete post $noteId: $error');
+      return false;
+    }
+  }
+
+  QFPost? _postFromRemote(Map<String, dynamic> data) {
+    final id = (data['id'] ?? '').toString();
+    final body = (data['body'] ?? '').toString();
+    final createdAtValue = data['createdAt'] as String?;
+    final createdAt = createdAtValue == null
+        ? DateTime.now()
+        : DateTime.tryParse(createdAtValue) ?? DateTime.now();
+    return QFPost(id: id, body: body, createdAt: createdAt);
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
   Bookmark? _bookmarkFromRemote(Map<String, dynamic> data) {
     final key = data['key'];
     final verseNumber = data['verseNumber'];
@@ -304,4 +431,17 @@ class QuranUserSyncService {
       createdAt: createdAt,
     );
   }
+}
+
+/// A published note/post on QuranReflect.
+class QFPost {
+  const QFPost({
+    required this.id,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String body;
+  final DateTime createdAt;
 }

@@ -39,7 +39,7 @@ class QuranUserAuthConfig {
 
   factory QuranUserAuthConfig.defaults() {
     return const QuranUserAuthConfig(
-      environment: QuranUserEnvironment.prelive,
+      environment: QuranUserEnvironment.production,
       redirectUri: defaultRedirectUri,
       scope: defaultScope,
     );

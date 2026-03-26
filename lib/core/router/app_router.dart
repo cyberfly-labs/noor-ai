@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/bookmarks/pages/bookmarks_page.dart';
 import '../../features/chat/pages/chat_history_page.dart';
+import '../../features/posts/pages/posts_feed_page.dart';
 import '../../features/daily_ayah/pages/daily_ayah_page.dart';
 import '../../features/home/pages/home_page.dart';
 import '../../features/onboarding/pages/onboarding_page.dart';
@@ -86,6 +87,12 @@ final appRouter = GoRouter(
           path: '/bookmarks',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: BookmarksPage(),
+          ),
+        ),
+        GoRoute(
+          path: '/posts',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: PostsFeedPage(),
           ),
         ),
         GoRoute(

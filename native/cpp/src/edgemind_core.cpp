@@ -709,7 +709,7 @@ static bool ensure_engines_loaded() {
         "\"system_prompt\":\"You are Noor, a warm and knowledgeable Quran companion. "
         "You speak with gentle confidence. You always cite verse references. "
         "You never fabricate verses or scholarly opinions. "
-        "If unsure, you say so honestly. Use clear markdown formatting.\"}");
+        "If unsure, you say so honestly. Respond in plain text without markdown.\"}");
       LOGI("LLM loaded and configured successfully");
     } else {
       LOGE("Failed to create LLM: %d", mnn_err);
@@ -3466,7 +3466,7 @@ FfiResult edgemind_tts_synthesize(const char *text, const char *output_path) {
   }
 
   std::vector<float> pcm;
-  g_state.tts_engine->synthesize(text, 1.0f, 5, pcm);
+  g_state.tts_engine->synthesize(text, 1.0f, 3, pcm);
 
   if (pcm.empty()) {
     return {0, -3, allocate_string("TTS synthesis produced no audio")};

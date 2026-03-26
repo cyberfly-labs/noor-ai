@@ -12,7 +12,6 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/llm_service.dart';
 import '../../../core/services/quran_api_service.dart';
 import '../../../core/services/quran_rag_service.dart';
-import '../../../core/services/vector_store_service.dart';
 import '../../../core/services/voice_service.dart';
 import '../../../core/utils/asr_normalization_pipeline.dart';
 import '../../../core/utils/intent_parser.dart';
@@ -82,7 +81,6 @@ class HomeNotifier extends StateNotifier<HomeState> {
   final _quranRag = QuranRagService.instance;
   final _db = DatabaseService.instance;
   final _intentParser = IntentParser.instance;
-  final _vectorStore = VectorStoreService.instance;
 
   String? _recordingPath;
   int _speechSessionId = 0;
@@ -231,6 +229,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
     } catch (e) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
+        isStreaming: false,
         error: 'Something went wrong: $e',
         citations: const <GroundingCitation>[],
       );
@@ -405,49 +404,42 @@ class HomeNotifier extends StateNotifier<HomeState> {
   Future<void> _handleEmotionalGuidance(Intent intent) async {
     final emotion = intent.emotion ?? 'difficulty';
 
-    // Query vector store for relevant Quran/emotional verses only (exclude hadith).
-    // Use the English retrieval query so the embedding search hits English-only DB.
-    final vectorQuery = intent.retrievalQuery.isNotEmpty
+    // Use the proper RAG pipeline (same as general questions) so we get
+    // structured evidence with verseKey + translationText for pre-filled slots.
+    final ragQuery = intent.retrievalQuery.isNotEmpty
         ? intent.retrievalQuery
         : '$emotion ${intent.rawText}';
-    final results = _vectorStore.queryByText(
-      vectorQuery,
-      topK: 5,
-      filter: (e) {
-        final kind = e.metadata['kind'] ?? '';
-        return kind == 'emotional' || kind == 'quran_corpus';
-      },
-    );
+    final evidence = await _buildGlobalQuestionEvidence(ragQuery);
+    final topEvidence = evidence.take(3).toList(growable: false);
 
-    final relevantVerses = results
-        .where((r) => (r.entry.metadata['verse_key'] ?? '').isNotEmpty)
-        .map((r) {
-          final key = r.entry.metadata['verse_key']!;
-          // emotional entries store raw text; quran_corpus stores "Translation: ..."
-          final rawContent = r.entry.content;
-          final translation = rawContent.contains('Translation: ')
-              ? rawContent
-                  .split('\n')
-                  .firstWhere((l) => l.startsWith('Translation: '), orElse: () => rawContent)
-                  .replaceFirst('Translation: ', '')
-              : rawContent;
-          return '[QURAN]\nSurah: $key\nTranslation: $translation';
-        })
-        .take(2)
-        .toList();
+    final List<String> verseReferences;
+    final List<String> verseTranslations;
+    final List<GroundingCitation> citations;
 
-    if (relevantVerses.isEmpty) {
-      relevantVerses.add('[QURAN]\nSurah: 94:5-6\nTranslation: For indeed, with hardship will be ease. Indeed, with hardship will be ease.');
-      relevantVerses.add('[QURAN]\nSurah: 2:286\nTranslation: Allah does not burden a soul beyond that it can bear.');
+    if (topEvidence.isEmpty) {
+      // Static fallback — hardcoded but still displayed as pre-filled slots.
+      verseReferences = ['94:5-6', '2:286'];
+      verseTranslations = [
+        'For indeed, with hardship will be ease. Indeed, with hardship will be ease.',
+        'Allah does not burden a soul beyond that it can bear.',
+      ];
+      citations = const <GroundingCitation>[];
+    } else {
+      verseReferences = topEvidence.map((item) => item.verseKey).toList(growable: false);
+      verseTranslations = topEvidence.map((item) => item.translationText).toList(growable: false);
+      citations = _citationsFromEvidence(topEvidence);
     }
+
+    debugPrint('HomeNotifier: emotional evidence_count=${evidence.length} verse_keys=${verseReferences.join(", ")}');
 
     final prompt = PromptTemplates.emotionalGuidance(
       emotion: emotion,
       userText: intent.rawText,
-      relevantVerses: relevantVerses,
+      verseReferences: verseReferences,
+      verseTranslations: verseTranslations,
     );
 
-    await _streamLlmResponse(prompt, intent);
+    await _streamLlmResponse(prompt, intent, citations: citations);
   }
 
   Future<void> _handleGeneralQuestion(Intent intent) async {
@@ -466,13 +458,21 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return;
     }
 
+    // Cap at 3 evidence items: matches the max slot count and keeps the prompt
+    // within the 0.8B model's comfortable context window.
+    final topEvidence = evidence.take(3).toList(growable: false);
     final allEvidenceBlocks = <String>[
-      for (var index = 0; index < evidence.length; index += 1)
-        '[EVIDENCE ${index + 1}]\n${evidence[index].promptBlock}',
+      for (var index = 0; index < topEvidence.length; index += 1)
+        '[EVIDENCE ${index + 1}]\n${topEvidence[index].promptBlock}',
     ];
-    final verseReferences = evidence
+    final verseReferences = topEvidence
         .map((item) => item.verseKey)
         .toList(growable: false);
+    final verseTranslations = topEvidence
+        .map((item) => item.translationText)
+        .toList(growable: false);
+
+    debugPrint('HomeNotifier: evidence_count=${evidence.length} top_count=${topEvidence.length} verse_keys=${verseReferences.join(", ")}');
 
     // Pass rawText (user's language) as the question so LLM responds in kind.
     final prompt = PromptTemplates.groundedGeneralQuestion(
@@ -480,11 +480,13 @@ class HomeNotifier extends StateNotifier<HomeState> {
       retrievalQuery: ragQuery,
       evidenceBlocks: allEvidenceBlocks,
       verseReferences: verseReferences,
+      verseTranslations: verseTranslations,
     );
+    debugPrint('HomeNotifier: prompt_chars=${prompt.length} slots_preview=${prompt.substring(prompt.indexOf("📖") < 0 ? 0 : prompt.indexOf("📖"), (prompt.indexOf("📚") < 0 ? prompt.length : prompt.indexOf("📚")).clamp(0, prompt.length))}');
     await _streamLlmResponse(
       prompt,
       intent,
-      citations: _citationsFromEvidence(evidence),
+      citations: _citationsFromEvidence(topEvidence),
     );
   }
 
@@ -594,6 +596,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
     var charsSinceLastEmit = 0;
     bool first = true;
     bool firstUiEmit = true;
+    bool presynthHintDispatched = false;
 
     await for (final token in _llmService.generate(prompt)) {
       buffer.write(token);
@@ -601,6 +604,15 @@ class HomeNotifier extends StateNotifier<HomeState> {
 
       if (first) {
         PerfTrace.mark(traceTag, 'first_token_received', totalSw);
+      }
+
+      // As soon as we have ~220 chars of LLM output (enough to fill one TTS
+      // chunk), pre-synthesize that first chunk in the background so it is
+      // ready to play the instant the full response arrives.
+      if (!presynthHintDispatched && buffer.length >= 220) {
+        presynthHintDispatched = true;
+        _voiceService.presynthesizeHint(buffer.toString());
+        PerfTrace.mark(traceTag, 'presynth_hint_dispatched', totalSw);
       }
 
       final now = DateTime.now();
@@ -625,6 +637,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
     }
 
     final rawResponse = buffer.toString();
+    debugPrint('HomeNotifier: raw_response_chars=${rawResponse.length} raw_preview=${rawResponse.substring(0, rawResponse.length.clamp(0, 400))}');
     final repairedResponse = _repairGroundedVerseCoverage(
       rawResponse,
       citations,
@@ -708,21 +721,21 @@ class HomeNotifier extends StateNotifier<HomeState> {
     }
 
     final quranSectionPattern = RegExp(
-      r'📖\s*\*\*Quran:\*\*\s*(.*?)(?=\n\s*📚\s*\*\*Explanation:\*\*|$)',
+      r'📖\s*Quran:\s*(.*?)(?=\n\s*📚\s*Explanation:|$)',
       dotAll: true,
     );
     if (quranSectionPattern.hasMatch(response)) {
       return response.replaceFirst(
         quranSectionPattern,
-        '📖 **Quran:**\n$repairedQuranSection\n\n',
+        '📖 Quran:\n$repairedQuranSection\n\n',
       );
     }
 
     if (response.trim().isEmpty) {
-      return '📖 **Quran:**\n$repairedQuranSection';
+      return '📖 Quran:\n$repairedQuranSection';
     }
 
-    return '📖 **Quran:**\n$repairedQuranSection\n\n${response.trim()}';
+    return '📖 Quran:\n$repairedQuranSection\n\n${response.trim()}';
   }
 
   String _enforceStrictGrounding(

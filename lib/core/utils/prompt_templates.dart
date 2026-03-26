@@ -12,7 +12,7 @@ class PromptTemplates {
       'Do not fabricate or speculate. '
       'If a sentence is not directly supported by the supplied Quran or Tafsir evidence, do not say it. '
       'If evidence is insufficient, say: "I could not find this in the provided sources." '
-      'Match the user language. Use clear markdown.';
+      'Match the user language. Respond in plain text without markdown.';
 
   /// Explain a Quran verse using only the supplied translation and tafsir
   static String explainVerse({
@@ -43,13 +43,13 @@ Rules:
 - If the source does not address something, say so.
 
 Structure your response EXACTLY as:
-📖 **Quran:**
+📖 Quran:
 [Quote the verse and reference.]
 
-📚 **Explanation:**
+📚 Explanation:
 [Grounded explanation in 4-6 sentences. Each sentence must add new information.]
 
-✨ **Summary:**
+✨ Summary:
 [1 short takeaway sentence.]
 
 Match the user's language. Do not repeat.''';
@@ -65,7 +65,7 @@ Match the user's language. Do not repeat.''';
 
 Give an overview of Surah $surahName (Chapter $surahNumber) based on the verse below.
 
-**First verse:** $firstVerseTranslation
+First verse: $firstVerseTranslation
 
 Rules:
 - Ground every claim in the verse provided. Do not fabricate additional verses or hadith.
@@ -75,9 +75,9 @@ Rules:
 - Match the user's language.
 
 Structure your answer as:
-1. **Theme**: The central theme visible in this verse (2-3 sentences).
-2. **Key Messages**: 2-3 messages directly supported by the provided text.
-3. **Significance**: Why this surah is important in Quran and Muslim life (2 sentences).
+1. Theme: The central theme visible in this verse (2-3 sentences).
+2. Key Messages: 2-3 messages directly supported by the provided text.
+3. Significance: Why this surah is important in Quran and Muslim life (2 sentences).
 
 Write 12-18 sentences total. Each sentence must add new information.''';
   }
@@ -107,13 +107,13 @@ Rules:
 - Match the user's language.
 
 Structure your response EXACTLY as:
-📖 **Quran:**
+📖 Quran:
 [Quote 1 key retrieved verse with its reference.]
 
-📚 **Explanation:**
+📚 Explanation:
 [Main themes from the evidence in 7-10 sentences.]
 
-✨ **Summary:**
+✨ Summary:
 [1-2 sentence central theme of this surah based on the retrieved evidence.]
 
 Write 10-14 grounded sentences. Do not repeat.''';
@@ -123,42 +123,52 @@ Write 10-14 grounded sentences. Do not repeat.''';
   static String emotionalGuidance({
     required String emotion,
     required String userText,
-    required List<String> relevantVerses,
+    required List<String> verseReferences,
+    required List<String> verseTranslations,
   }) {
-    final versesText = relevantVerses.join('\n\n');
+    // Pre-fill verse slots so the 0.8B model echoes each translation
+    // rather than selecting only one.
+    final slotCount = verseReferences.length.clamp(1, 3);
+    final verseSlots = List.generate(slotCount, (i) {
+      final key = verseReferences[i];
+      final fill = i < verseTranslations.length && verseTranslations[i].isNotEmpty
+          ? '"${verseTranslations[i]}"'
+          : '[copy translation from evidence]';
+      return '- $key: $fill';
+    }).join('\n');
+    final explanationSlots = List.generate(slotCount, (i) {
+      return '  - ${verseReferences[i]}: [1-2 warm sentences on how this verse comforts someone feeling $emotion]';
+    }).join('\n');
 
     return '''$_noorIdentity
 
-The user is going through a difficult time. They are experiencing: **$emotion**
+The user is going through a difficult time. They are experiencing: $emotion
 They said: "$userText"
 
-Retrieved source evidence:
-$versesText
-
-Respond with genuine warmth and empathy, grounded strictly in the evidence above.
+Respond with genuine warmth and empathy, grounded strictly in the verses below.
 
 Rules:
-- Ground every comforting point in the supplied [QURAN] blocks — never fabricate quotations.
-- For [QURAN]: cite using the exact Surah reference shown in the "Surah:" field.
-- Every sentence must be directly supported by the supplied Quran evidence.
+- The Quran translations in the \u{1F4D6} section are pre-filled — output them exactly as shown.
+- Every comforting point must be grounded in the verses shown.
+- Do NOT skip any verse slot — fill every one.
 - Do not give fatwas or religious rulings.
 - Match the user's language.
-- If the evidence is insufficient, say: "I could not find this in the provided Quran or Tafsir المصادر."
 
 Structure your response EXACTLY as:
-📖 **Quran:**
-[Quote one relevant verse and cite the Surah reference from the block.]
+📖 Quran:
+$verseSlots
 
-📚 **Explanation:**
-[Warm, grounded explanation in 4-6 sentences.]
+📚 Explanation:
+For each verse above, explain how it brings comfort for $emotion:
+$explanationSlots
 
-🤍 **Comfort:**
-[Give 2-4 short sentences of reassurance from the evidence.]
+🤍 Comfort:
+[2-4 short sentences of reassurance referencing the verse keys above.]
 
-✨ **Summary:**
-[1-2 hopeful, encouraging sentences directly from the evidence.]
+✨ Summary:
+[1-2 hopeful sentences directly grounded in the verses above.]
 
-Be compassionate and grounded.''';
+Be compassionate. Do not skip any verse slot.''';
   }
 
   /// General Quran question (ungrounded fallback — used only when RAG returns nothing)
@@ -166,7 +176,7 @@ Be compassionate and grounded.''';
     return '''$_noorIdentity
 
 Answer this question about the Quran or Islam:
-**"$question"**
+"$question"
 
 Rules:
 - Quote Quran verses with Surah name and ayah number (e.g. Al-Baqarah 2:255) when relevant.
@@ -177,13 +187,13 @@ Rules:
 - Match the user's language.
 
 Structure your response EXACTLY as:
-📖 **Quran:**
+📖 Quran:
 [Most relevant verse with Surah name and ayah number. Omit if not applicable.]
 
-📚 **Explanation:**
+📚 Explanation:
 [Attributed explanation. 6-10 sentences.]
 
-✨ **Summary:**
+✨ Summary:
 [1-2 sentence takeaway.]
 
 Write 10-16 sentences. Each sentence must add new information.''';
@@ -194,62 +204,66 @@ Write 10-16 sentences. Each sentence must add new information.''';
     required String retrievalQuery,
     required List<String> evidenceBlocks,
     required List<String> verseReferences,
+    List<String> verseTranslations = const [],
   }) {
     final evidenceText = evidenceBlocks.join('\n\n');
-    final verseReferenceText = verseReferences.join(', ');
-    final minVerseCount = verseReferences.length >= 2 ? 2 : verseReferences.length;
     final normalizedRetrievalQuery = retrievalQuery.trim();
     final retrievalQueryBlock = normalizedRetrievalQuery.isNotEmpty &&
             normalizedRetrievalQuery != question.trim()
-        ? 'Retrieval query used to fetch the evidence: **"$normalizedRetrievalQuery"**\n\n'
+        ? 'Retrieval query used to fetch the evidence: "$normalizedRetrievalQuery"\n\n'
         : '';
-    final quoteInstruction = verseReferences.length <= 1
-      ? 'quote and cite the relevant translation from the retrieved evidence.'
-      : verseReferences.length >= 3
-        ? 'quote and cite 2-3 relevant translations from the retrieved evidence, using distinct verse references.'
-        : 'quote and cite 2 relevant translations from the retrieved evidence, using distinct verse references.';
+
+    // Pre-fill each slot with the actual translation text so the 0.8B model
+    // just echoes it rather than searching across multiple evidence blocks.
+    final slotCount = verseReferences.length.clamp(1, 3);
+    final verseSlots = List.generate(slotCount, (i) {
+      final key = verseReferences[i];
+      final fill = i < verseTranslations.length && verseTranslations[i].isNotEmpty
+          ? '"${verseTranslations[i]}"'
+          : '[copy Translation from EVIDENCE ${i + 1}]';
+      return '- $key — $fill';
+    }).join('\n');
+    final explanationSlots = List.generate(slotCount, (i) {
+      return '  - ${verseReferences[i]}: [use EVIDENCE ${i + 1} tafsir to answer in 1-2 sentences]';
+    }).join('\n');
 
     return '''$_noorIdentity
 
 Answer the user's question using ONLY the retrieved evidence below.
 
-Question: **"$question"**
+Question: "$question"
 
 $retrievalQueryBlock
-
-Retrieved Quran verse references: $verseReferenceText
-
 Retrieved source evidence:
 $evidenceText
 
 Rules:
 - Use ONLY the supplied [QURAN] and [TAFSIR] blocks — no outside knowledge.
-- Interpret the retrieved evidence in light of the user's question and the retrieval query shown above.
-- Explain explicitly how each cited verse connects to the user's question, not just what the verse says in isolation.
-- Every sentence in the answer must be directly supported by the retrieved Quran or tafsir evidence.
-- For [QURAN]: read the "Surah:" field for the verse reference and the "Translation:" field for the text. Quote BOTH in your answer.
-- For [TAFSIR]: attribute to the source shown in the "Source:" field.
-- When more than one Quran verse reference is listed above, you MUST mention at least $minVerseCount distinct verse references from that list in the answer, not just the first one.
-- If 3 or more verse references are listed above, prefer citing 2-3 of them when they support the answer.
+- Interpret every piece of evidence in light of the user's question.
+- Every sentence must be directly supported by the retrieved evidence.
+- The Quran translations in the 📖 section are pre-filled — output them exactly as shown.
+- For each [TAFSIR] block: draw on its insights when writing the 📚 Explanation section.
+- Do NOT skip any verse slot in the structure below — fill every one.
+- Do NOT cite any verse not found in the retrieved evidence above.
 - Do NOT give fatwas, speculate, or add personal opinion.
-- Do NOT cite any source or verse not found in the retrieved evidence above.
 - If the evidence does not answer the question, say exactly: "I could not find this in the provided Quran or Tafsir المصادر."
 - Match the user's language.
 
 Structure your response EXACTLY as:
-📖 **Quran:**
-[If relevant [QURAN] blocks exist, $quoteInstruction]
+📖 Quran:
+$verseSlots
 
-📚 **Explanation:**
-[Attributed explanation in 6-10 sentences that synthesizes the retrieved verses and tafsir, not just the first verse.]
+📚 Explanation:
+For each verse above, explain how it answers the question:
+$explanationSlots
 
-🧭 **What This Means For Your Question:**
-[Answer the user's actual question directly in 2-4 grounded sentences.]
+🧭 What This Means For Your Question:
+[Answer the user's actual question directly in 2-4 grounded sentences, referencing the verse keys above.]
 
-✨ **Summary:**
+✨ Summary:
 [1-2 sentence takeaway directly from the evidence.]
 
-Answer in depth when the evidence supports it, and do not repeat.''';
+Do not skip any verse slot. Do not repeat sentences.''';
   }
 
   static String rewriteAsrTranscript({
@@ -372,8 +386,8 @@ Return only the English translation.''';
 
 Write a short daily reflection for this verse.
 
-**Verse (Arabic):** $arabicText
-**Translation:** $translationText
+Verse (Arabic): $arabicText
+Translation: $translationText
 
 Rules:
 - Ground the reflection strictly in the verse provided — do not add unrelated quotes.

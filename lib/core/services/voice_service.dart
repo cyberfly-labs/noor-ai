@@ -40,7 +40,9 @@ class VoiceService {
   static const double _minPlaybackVolume = 0.6;
   static const double _maxPlaybackVolume = 1.0;
   static const int _maxTtsChunkLength = 220;
-  static const int _maxSinglePassTtsLength = 1800;
+  // Single-pass synthesis disabled (= 0): always use chunked mode so audio
+  // begins after the first chunk instead of waiting for the entire response.
+  static const int _maxSinglePassTtsLength = 0;
   static const List<TtsVoiceOption> _supportedTtsVoices = <TtsVoiceOption>[
     TtsVoiceOption(
       id: 'F1',
@@ -76,6 +78,14 @@ class VoiceService {
   double _playbackVolume = _defaultPlaybackVolume;
   String _ttsVoiceId = _defaultTtsVoiceId;
 
+  // ── Hot-path caches ──────────────────────────────────────────────────────
+  bool _settingsLoaded = false;
+  bool _audioSessionConfigured = false;
+  bool _audioSessionActive = false;
+  // First-chunk pre-synthesis cache (set by presynthesizeHint, consumed by synthesize)
+  String? _cachedFirstChunkText;
+  String? _cachedFirstChunkWav;
+
   bool get isRecording => _isRecording;
   bool get asrReady => _asrReady;
   bool get ttsReady => _ttsReady;
@@ -89,6 +99,8 @@ class VoiceService {
   Stream<bool> get isPlaying => _playbackStateController.stream;
 
   Future<void> initializeAudioSettings() async {
+    if (_settingsLoaded) return;
+    _settingsLoaded = true;
     final prefs = await SharedPreferences.getInstance();
     _ttsGain = _clampTtsGain(
       prefs.getDouble(_ttsGainPreferenceKey) ?? _defaultTtsGain,
@@ -354,6 +366,15 @@ class VoiceService {
       return null;
     }
 
+    // Serve from pre-synthesis cache if available (avoids redundant synthesis)
+    if (_cachedFirstChunkText == text) {
+      final wav = _cachedFirstChunkWav;
+      _cachedFirstChunkText = null;
+      _cachedFirstChunkWav = null;
+      debugPrint('VoiceService: cache hit for first chunk (${text.length} chars)');
+      return wav;
+    }
+
     final tempDir = await getTemporaryDirectory();
     final outputPath =
         '${tempDir.path}/noor_tts_${DateTime.now().millisecondsSinceEpoch}.wav';
@@ -365,6 +386,28 @@ class VoiceService {
     }
 
     return outputPath;
+  }
+
+  /// Pre-synthesize the first TTS chunk in the background while the LLM is
+  /// still streaming. The result is cached and consumed by the next speak()
+  /// call, so no synthesis time is spent on the first chunk at playback time.
+  void presynthesizeHint(String partialText) {
+    if (!_ttsReady) return;
+    () async {
+      final normalized = _normalizeSpokenText(partialText);
+      if (normalized.isEmpty) return;
+      final chunks = _buildSpeechChunks(normalized);
+      if (chunks.isEmpty) return;
+      final firstChunk = chunks.first;
+      // Don't overwrite a still-valid cached entry
+      if (_cachedFirstChunkText == firstChunk) return;
+      final wavPath = await synthesize(firstChunk);
+      if (wavPath != null) {
+        _cachedFirstChunkText = firstChunk;
+        _cachedFirstChunkWav = wavPath;
+        debugPrint('VoiceService: pre-synthesized first chunk (${firstChunk.length} chars)');
+      }
+    }();
   }
 
   /// Speak text using TTS with audio playback
@@ -591,10 +634,11 @@ class VoiceService {
       return <String>[normalized];
     }
 
-    // Split only on sentence-ending punctuation — NOT on colons, to avoid
-    // creating micro-chunks from verse refs like "2:153" or labels like "Quran:".
+    // Split on sentence-ending punctuation — NOT on '?' to avoid stopping mid-
+    // paragraph at question marks (the C++ TTS engine handles '?' internally),
+    // and NOT on colons to avoid micro-chunks from verse refs like "2:153".
     final sentences = normalized
-        .split(RegExp(r'(?<=[.!?;])\s+'))
+        .split(RegExp(r'(?<=[.!;])\s+'))
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .toList(growable: false);
@@ -692,16 +736,12 @@ class VoiceService {
     return <String>[left, right];
   }
 
+  // ttsSynthesize() is a synchronous blocking FFI call — the WAV file is fully
+  // written before synthesize() returns. A single existence+size check is enough.
   Future<bool> _waitForWavFile(String path) async {
     final file = File(path);
-    for (var attempt = 0; attempt < 4; attempt += 1) {
-      if (await file.exists()) {
-        final len = await file.length();
-        if (len > 0) {
-          return true;
-        }
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (await file.exists()) {
+      return await file.length() > 0;
     }
     return false;
   }
@@ -780,13 +820,22 @@ class VoiceService {
 
   Future<void> _preparePlayback() async {
     final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.speech());
-    await session.setActive(true);
+    if (!_audioSessionConfigured) {
+      await session.configure(const AudioSessionConfiguration.speech());
+      _audioSessionConfigured = true;
+    }
+    if (!_audioSessionActive) {
+      await session.setActive(true);
+      _audioSessionActive = true;
+    }
   }
 
   Future<void> _finishPlayback() async {
-    final session = await AudioSession.instance;
-    await session.setActive(false);
+    if (_audioSessionActive) {
+      final session = await AudioSession.instance;
+      await session.setActive(false);
+      _audioSessionActive = false;
+    }
   }
 
   Future<void> _waitForPlaybackEnd(int sessionId) async {
@@ -807,13 +856,27 @@ class VoiceService {
     if (sessionId != _playbackSessionId || !started.playing) return;
 
     // Phase 2: playback has started — wait for it to finish.
-    await _player.playerStateStream.firstWhere(
-      (s) =>
-          sessionId != _playbackSessionId ||
-          (!s.playing &&
-              (s.processingState == ProcessingState.completed ||
-                  s.processingState == ProcessingState.idle)),
-    );
+    // We only check s.playing (not processingState) because:
+    //   (a) Phase 1 already confirmed playing==true, so the BehaviorSubject
+    //       replay here will also emit playing==true first, then false when done.
+    //   (b) processingState varies by Android API level / ExoPlayer version
+    //       (idle / ready / completed) and checking it caused false-positive
+    //       timeouts in the past.
+    // Timeout of 120 s is a true safety net — the longest expected TTS chunk
+    // is ~220 chars ≈ 18 s of audio, so 120 s gives 6× headroom.
+    await _player.playerStateStream
+        .firstWhere(
+          (s) => sessionId != _playbackSessionId || !s.playing,
+        )
+        .timeout(
+          const Duration(seconds: 120),
+          onTimeout: () {
+            debugPrint(
+              'VoiceService: _waitForPlaybackEnd Phase 2 timed out — advancing to next chunk',
+            );
+            return _player.playerState;
+          },
+        );
   }
 
   double _clampTtsGain(double value) {
