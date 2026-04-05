@@ -12,7 +12,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/perf_trace.dart';
 import '../../bookmarks/providers/bookmarks_provider.dart';
 import '../providers/home_provider.dart';
-import '../widgets/animated_voice_button.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -22,48 +21,32 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  static const List<({String label, String prompt, IconData icon})>
-      _feelingPrompts = [
+  static const List<({String label, String subtitle, String prompt, IconData icon})>
+  _feelingPrompts = [
+    (label: 'Peaceful', subtitle: 'Verses of tranquility', prompt: 'I feel at peace and want to reflect', icon: Icons.cloud_outlined),
+    (label: 'Seeking guidance', subtitle: 'Wisdom for difficult choices', prompt: 'I need guidance for a difficult decision', icon: Icons.psychology_outlined),
+    (label: 'Grateful', subtitle: 'Reminders of blessings', prompt: 'I feel grateful', icon: Icons.favorite_outline),
+    (label: 'Anxious', subtitle: 'Finding inner calm', prompt: 'I feel anxious', icon: Icons.waves_outlined),
+    (label: 'Sad', subtitle: 'Comfort in difficult times', prompt: 'I feel sad', icon: Icons.water_drop_outlined),
+    (label: 'Lost', subtitle: 'Finding your purpose', prompt: 'I feel lost', icon: Icons.explore_outlined),
+    (label: 'Lonely', subtitle: 'You are never alone', prompt: 'I feel lonely', icon: Icons.person_outline_rounded),
+    (label: 'Happy', subtitle: 'Celebrate with gratitude', prompt: 'I feel happy', icon: Icons.wb_sunny_outlined),
+  ];
+
+  static const List<({String label, String prompt})> _suggestedPrompts = [
     (
-      label: 'Anxious',
-      prompt: 'I feel anxious',
-      icon: Icons.favorite_outline,
+      label: 'Virtues of Sabr',
+      prompt: 'Show me Quran verses about the virtues of patience (Sabr).',
     ),
     (
-      label: 'Happy',
-      prompt: 'I feel happy',
-      icon: Icons.wb_sunny_outlined,
+      label: 'Purpose of life',
+      prompt: 'What does the Quran say about the purpose of life?',
     ),
     (
-      label: 'Guilty',
-      prompt: 'I feel guilty and regretful',
-      icon: Icons.hourglass_empty_rounded,
+      label: 'Healing verses',
+      prompt: 'Show me healing and comforting verses from the Quran.',
     ),
-    (
-      label: 'Grateful',
-      prompt: 'I feel grateful',
-      icon: Icons.volunteer_activism_outlined,
-    ),
-    (
-      label: 'Lonely',
-      prompt: 'I feel lonely',
-      icon: Icons.person_outline_rounded,
-    ),
-    (
-      label: 'Lost',
-      prompt: 'I feel lost',
-      icon: Icons.explore_outlined,
-    ),
-    (
-      label: 'Overwhelmed',
-      prompt: 'I feel overwhelmed',
-      icon: Icons.waves_outlined,
-    ),
-    (
-      label: 'Sad',
-      prompt: 'I feel sad',
-      icon: Icons.cloud_outlined,
-    ),
+    (label: 'Morning focus', prompt: 'Give me a Quran reflection for starting the day with focus.'),
   ];
 
   final _textController = TextEditingController();
@@ -78,6 +61,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   String? _popupTraceTag;
   Stopwatch? _popupCycleSw;
   int _lastPopupLoggedLength = -1;
+
   /// True while the user has scrolled up during streaming — pauses auto-scroll.
   bool _userScrolledUp = false;
 
@@ -96,54 +80,61 @@ class _HomePageState extends ConsumerState<HomePage> {
     _responseScrollController.addListener(_onScrollUpdate);
     _popupScrollController.addListener(_onScrollUpdate);
 
-    _homeStateSubscription = ref.listenManual<HomeState>(
-      homeProvider,
-      (previous, next) {
-        _popupSnapshot = next;
-        final responseChanged = previous?.response != next.response;
-        final citationsChanged = previous?.citations.length != next.citations.length;
-        final hadNoResponse = !(previous?.response?.isNotEmpty ?? false);
+    _homeStateSubscription = ref.listenManual<HomeState>(homeProvider, (
+      previous,
+      next,
+    ) {
+      _popupSnapshot = next;
+      final responseChanged = previous?.response != next.response;
+      final citationsChanged =
+          previous?.citations.length != next.citations.length;
+      final hadNoResponse = !(previous?.response?.isNotEmpty ?? false);
 
-        if (hadNoResponse && next.voiceState == VoiceState.processing) {
-          _popupTraceTag = PerfTrace.nextTag('home.popup');
-          _popupCycleSw = PerfTrace.start(_popupTraceTag!, 'ui_cycle');
-          _lastPopupLoggedLength = -1;
-        }
+      if (hadNoResponse && next.voiceState == VoiceState.processing) {
+        _popupTraceTag = PerfTrace.nextTag('home.popup');
+        _popupCycleSw = PerfTrace.start(_popupTraceTag!, 'ui_cycle');
+        _lastPopupLoggedLength = -1;
+      }
 
-        if (!(next.response?.isNotEmpty ?? false)) {
-          _answerPopupDismissedForCurrentResponse = false;
-          if (_userScrolledUp) setState(() => _userScrolledUp = false);
-          return;
-        }
+      if (!(next.response?.isNotEmpty ?? false)) {
+        _answerPopupDismissedForCurrentResponse = false;
+        if (_userScrolledUp) setState(() => _userScrolledUp = false);
+        return;
+      }
 
-        final responseLength = next.response?.length ?? 0;
-        if (_popupTraceTag != null && _popupCycleSw != null) {
-          if (_lastPopupLoggedLength < 0) {
-            PerfTrace.mark(_popupTraceTag!, 'first_response_visible', _popupCycleSw!);
-          }
-          if (_isAnswerPopupVisible && responseLength != _lastPopupLoggedLength) {
-            PerfTrace.mark(
-              _popupTraceTag!,
-              'popup_response_len_$responseLength',
-              _popupCycleSw!,
-            );
-          }
+      final responseLength = next.response?.length ?? 0;
+      if (_popupTraceTag != null && _popupCycleSw != null) {
+        if (_lastPopupLoggedLength < 0) {
+          PerfTrace.mark(
+            _popupTraceTag!,
+            'first_response_visible',
+            _popupCycleSw!,
+          );
         }
-        _lastPopupLoggedLength = responseLength;
+        if (_isAnswerPopupVisible && responseLength != _lastPopupLoggedLength) {
+          PerfTrace.mark(
+            _popupTraceTag!,
+            'popup_response_len_$responseLength',
+            _popupCycleSw!,
+          );
+        }
+      }
+      _lastPopupLoggedLength = responseLength;
 
-        if ((responseChanged || citationsChanged) &&
-            (next.response?.isNotEmpty ?? false)) {
-          _scheduleAutoScroll(isStreaming: next.isStreaming);
-          if (!_isAnswerPopupVisible && !_answerPopupDismissedForCurrentResponse) {
-            _showAnswerPopup();
-          }
+      if ((responseChanged || citationsChanged) &&
+          (next.response?.isNotEmpty ?? false)) {
+        _scheduleAutoScroll(isStreaming: next.isStreaming);
+        if (!_isAnswerPopupVisible &&
+            !_answerPopupDismissedForCurrentResponse) {
+          _showAnswerPopup();
         }
-      },
-    );
+      }
+    });
   }
 
-  ScrollController get _activeScrollController =>
-      _isAnswerPopupVisible ? _popupScrollController : _responseScrollController;
+  ScrollController get _activeScrollController => _isAnswerPopupVisible
+      ? _popupScrollController
+      : _responseScrollController;
 
   @override
   void dispose() {
@@ -174,182 +165,225 @@ class _HomePageState extends ConsumerState<HomePage> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   child: Row(
                     children: [
                       Container(
-                        width: 38,
-                        height: 38,
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: AppColors.goldGradient,
+                          color: AppColors.surfaceLight,
                         ),
-                        child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF060B11)),
+                        child: const Icon(
+                          Icons.person_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Noor AI',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  color: AppColors.textPrimary,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.3,
-                                ),
-                          ),
-                          Text(
-                            'Your Quran Companion',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textMuted,
-                                ),
-                          ),
-                        ],
+                      const Spacer(),
+                      Text(
+                        'Noor AI',
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(
+                              color: AppColors.gold,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
+                              fontSize: 22,
+                            ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => context.go('/settings'),
+                        icon: const Icon(
+                          Icons.settings_outlined,
+                          color: AppColors.gold,
+                          size: 22,
+                        ),
                       ),
                     ],
                   ),
                 ),
 
-                Expanded(
-                  child: _buildResponseArea(state),
-                ),
+                Expanded(child: _buildResponseArea(state)),
 
-                if (!keyboardOpen) ...[
-                  AnimatedVoiceButton(
-                    state: state.voiceState,
-                    onTap: () => ref.read(homeProvider.notifier).toggleVoice(),
-                  ),
+                if (!keyboardOpen &&
+                    state.transcription != null &&
+                    state.transcription!.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.fromLTRB(24, 6, 24, 6),
+                    child: Column(
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          child: Text(
+                            _statusText(state.voiceState),
+                            key: ValueKey(state.voiceState),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: state.voiceState == VoiceState.idle
+                                      ? AppColors.textMuted
+                                      : AppColors.gold85,
+                                  fontWeight:
+                                      state.voiceState == VoiceState.idle
+                                      ? FontWeight.w500
+                                      : FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceLight.withValues(
+                              alpha: 0.6,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '"${state.transcription}"',
+                            textAlign: TextAlign.center,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: AppColors.textSecondary.withValues(
+                                    alpha: 0.8,
+                                  ),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (!keyboardOpen && state.voiceState != VoiceState.idle)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 6),
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 250),
                       child: Text(
                         _statusText(state.voiceState),
                         key: ValueKey(state.voiceState),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: state.voiceState == VoiceState.idle
-                                  ? AppColors.textMuted
-                                  : AppColors.gold.withValues(alpha: 0.85),
-                              fontWeight: state.voiceState == VoiceState.idle
-                                  ? FontWeight.w500
-                                  : FontWeight.w600,
-                            ),
+                          color: AppColors.gold85,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                  if (state.transcription != null && state.transcription!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceLight.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '"${state.transcription}"',
-                          textAlign: TextAlign.center,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppColors.textSecondary.withValues(alpha: 0.8),
-                                fontStyle: FontStyle.italic,
-                              ),
-                        ),
-                      ),
-                    ),
-                ],
 
-            // ── Text input ────────────────────────────
-            Container(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, keyboardOpen ? 12 : 12 + bottomPadding + 56),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.background.withValues(alpha: 0.0),
-                    AppColors.background,
-                  ],
-                  stops: const [0.0, 0.3],
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceLight,
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: AppColors.divider),
-                      ),
-                      child: TextField(
-                        controller: _textController,
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: 'Ask about the Quran...',
-                          hintStyle: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.8)),
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          suffixIcon: _hasInputText
-                              ? IconButton(
-                                  onPressed: () => _textController.clear(),
-                                  icon: Icon(Icons.close_rounded, size: 18, color: AppColors.textMuted),
-                                  tooltip: 'Clear',
-                                )
-                              : null,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        ),
-                        onSubmitted: isStopActionVisible ? null : _sendText,
-                      ),
-                    ),
+                // ── Text input ────────────────────────────
+                Container(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    keyboardOpen ? 12 : 12 + bottomPadding,
                   ),
-                  const SizedBox(width: 10),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isStopActionVisible
-                          ? AppColors.error
-                          : _hasInputText
+                  decoration: const BoxDecoration(
+                    gradient: AppColors.footerFadeGradient,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(color: AppColors.divider),
+                          ),
+                          child: TextField(
+                            controller: _textController,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 14,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'Ask about the Quran...',
+                              hintStyle: TextStyle(
+                                color: AppColors.textMuted.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              suffixIcon: _hasInputText
+                                  ? IconButton(
+                                      onPressed: () => _textController.clear(),
+                                      icon: Icon(
+                                        Icons.close_rounded,
+                                        size: 18,
+                                        color: AppColors.textMuted,
+                                      ),
+                                      tooltip: 'Clear',
+                                    )
+                                  : null,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                            ),
+                            onSubmitted: isStopActionVisible ? null : _sendText,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isStopActionVisible
+                              ? AppColors.error
+                              : _hasInputText
                               ? AppColors.gold
                               : AppColors.surfaceLight,
-                      border: isStopActionVisible || _hasInputText
-                          ? null
-                          : Border.all(color: AppColors.divider),
-                    ),
-                    child: IconButton(
-                      onPressed: isStopActionVisible
-                          ? _stopActiveResponse
-                          : _hasInputText
+                          border: isStopActionVisible || _hasInputText
+                              ? null
+                              : Border.all(color: AppColors.divider),
+                        ),
+                        child: IconButton(
+                          onPressed: isStopActionVisible
+                              ? _stopActiveResponse
+                              : _hasInputText
                               ? () => _sendText(_textController.text)
-                              : null,
-                      icon: Icon(
-                        isStopActionVisible
-                            ? Icons.stop_rounded
-                            : Icons.arrow_upward_rounded,
-                        size: 20,
-                        color: isStopActionVisible
-                            ? Colors.white
-                            : _hasInputText
+                              : () => ref
+                                    .read(homeProvider.notifier)
+                                    .toggleVoice(),
+                          icon: Icon(
+                            isStopActionVisible
+                                ? Icons.stop_rounded
+                                : _hasInputText
+                                ? Icons.arrow_upward_rounded
+                                : Icons.mic_rounded,
+                            size: 20,
+                            color: isStopActionVisible
+                                ? Colors.white
+                                : _hasInputText
                                 ? AppColors.background
                                 : AppColors.textMuted,
+                          ),
+                          tooltip: isStopActionVisible
+                              ? 'Stop'
+                              : _hasInputText
+                              ? 'Send'
+                              : 'Speak',
+                        ),
                       ),
-                      tooltip: isStopActionVisible ? 'Stop' : 'Send',
-                    ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                ),
               ],
             ),
           ),
-          if (_isAnswerPopupVisible)
-            _buildAnswerPopupOverlay(),
+          if (_isAnswerPopupVisible) _buildAnswerPopupOverlay(),
         ],
       ),
     );
@@ -367,10 +401,14 @@ class _HomePageState extends ConsumerState<HomePage> {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
+                  color: AppColors.errorAlpha10,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 28),
+                child: const Icon(
+                  Icons.error_outline_rounded,
+                  color: AppColors.error,
+                  size: 28,
+                ),
               ),
               const SizedBox(height: 16),
               Text(
@@ -405,13 +443,16 @@ class _HomePageState extends ConsumerState<HomePage> {
                       height: 28,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.5,
-                        color: AppColors.gold.withValues(alpha: 0.6),
+                        color: AppColors.gold60,
                       ),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       'Thinking...',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -427,79 +468,259 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildFeelingChooser() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Hero branding
+          _buildHeroBranding(),
+          const SizedBox(height: 28),
+
+          // Quick suggestions
+          Padding(
+            padding: const EdgeInsets.only(left: 2),
+            child: Text(
+              'TRY ASKING',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: AppColors.textMuted,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: _suggestedPrompts
+                .map(
+                  (item) => _quickPromptChip(
+                    item.label,
+                    Icons.auto_awesome_rounded,
+                    prompt: item.prompt,
+                  ),
+                )
+                .toList(growable: false),
+          ),
+          const SizedBox(height: 28),
+
+          // Action grid
+          _buildActionGrid(),
+          const SizedBox(height: 28),
+
+          // Feelings section
+          _buildFeelingsSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroBranding() {
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            'Divine guidance for your heart',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.3,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Illuminate your path.',
+            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              fontSize: 34,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionGrid() {
+    return Row(
+      children: [
+        Expanded(
+          child: _actionCard(
+            icon: Icons.auto_stories_rounded,
+            bgIcon: Icons.today_rounded,
+            title: 'Daily Ayah',
+            subtitle: 'Verse of the day reflection',
+            route: '/daily-ayah',
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _actionCard(
+            icon: Icons.explore_rounded,
+            bgIcon: Icons.menu_book_rounded,
+            title: 'Browse Quran',
+            subtitle: 'Explore by Surah & Juz',
+            route: '/quran',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionCard({
+    required IconData icon,
+    required IconData bgIcon,
+    required String title,
+    required String subtitle,
+    required String route,
+  }) {
+    return GestureDetector(
+      onTap: () => context.go(route),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -8,
+              right: -8,
+              child: Icon(
+                bgIcon,
+                size: 56,
+                color: AppColors.textMuted08,
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 28, color: AppColors.gold),
+                const SizedBox(height: 14),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeelingsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Start with a feeling',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Guided wisdom for your emotional state',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        ..._feelingPrompts.map((item) => _buildFeelingRow(item)),
+      ],
+    );
+  }
+
+  Widget _buildFeelingRow(
+    ({String label, String subtitle, String prompt, IconData icon}) item,
+  ) {
+    return GestureDetector(
+      onTap: () {
+        _textController.text = item.prompt;
+        _sendText(item.prompt);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(item.icon, size: 22, color: AppColors.gold),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.gold.withValues(alpha: 0.06),
-                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.12), width: 1.5),
-                    ),
-                    child: Icon(
-                      Icons.mosque_rounded,
-                      size: 32,
-                      color: AppColors.gold.withValues(alpha: 0.4),
+                  Text(
+                    item.label,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 2),
                   Text(
-                    'How are you feeling today?',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Choose a feeling and Noor will bring Quran-based comfort, perspective, or gratitude reminders.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 10,
-                    runSpacing: 12,
-                    children: _feelingPrompts
-                        .map(
-                          (item) => _quickPromptChip(
-                            item.label,
-                            item.icon,
-                            prompt: item.prompt,
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                  const SizedBox(height: 22),
-                  Text(
-                    'You can still type your own question below.',
-                    textAlign: TextAlign.center,
+                    item.subtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textMuted.withValues(alpha: 0.82),
-                        ),
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-        );
-      },
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 22,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
     );
   }
+
+  // _quickActionChip & _greeting removed — replaced by new design
 
   Future<void> _showAnswerPopup() async {
     if (!mounted || _isAnswerPopupVisible) {
@@ -529,7 +750,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final state = _popupSnapshot;
     return Positioned.fill(
       child: Material(
-        color: Colors.black.withValues(alpha: 0.32),
+        color: AppColors.black32,
         child: Stack(
           children: [
             Positioned.fill(
@@ -548,13 +769,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: AppColors.surface,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
                       border: Border.all(
-                        color: AppColors.gold.withValues(alpha: 0.12),
+                        color: AppColors.gold12,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.28),
+                          color: AppColors.black28,
                           blurRadius: 28,
                           offset: const Offset(0, -6),
                         ),
@@ -567,7 +790,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           width: 36,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: AppColors.textMuted.withValues(alpha: 0.4),
+                            color: AppColors.textMuted40,
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
@@ -580,45 +803,64 @@ class _HomePageState extends ConsumerState<HomePage> {
                                 height: 32,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: AppColors.gold.withValues(alpha: 0.1),
+                                  color: AppColors.gold10,
                                 ),
-                                child: const Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.gold),
+                                child: const Icon(
+                                  Icons.auto_awesome_rounded,
+                                  size: 16,
+                                  color: AppColors.gold,
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Text(
                                 'Answer',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
                                       color: AppColors.textPrimary,
                                       fontWeight: FontWeight.w700,
                                     ),
                               ),
                               const Spacer(),
                               IconButton(
-                                onPressed: state.response == null || state.response!.trim().isEmpty
+                                onPressed:
+                                    state.response == null ||
+                                        state.response!.trim().isEmpty
                                     ? null
                                     : () => _copyAnswer(state.response!),
-                                icon: Icon(Icons.copy_rounded, size: 20, color: AppColors.textSecondary),
+                                icon: Icon(
+                                  Icons.copy_rounded,
+                                  size: 20,
+                                  color: AppColors.textSecondary,
+                                ),
                                 tooltip: 'Copy answer',
                               ),
                               IconButton(
-                                onPressed: state.response == null || state.response!.trim().isEmpty || state.isStreaming
+                                onPressed:
+                                    state.response == null ||
+                                        state.response!.trim().isEmpty ||
+                                        state.isStreaming
                                     ? null
                                     : () => _shareAsPost(state),
-                                icon: Icon(Icons.share_rounded, size: 20, color: AppColors.textSecondary),
+                                icon: Icon(
+                                  Icons.share_rounded,
+                                  size: 20,
+                                  color: AppColors.textSecondary,
+                                ),
                                 tooltip: 'Share as post',
                               ),
                               IconButton(
                                 onPressed: _hideAnswerPopup,
-                                icon: Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  size: 20,
+                                  color: AppColors.textSecondary,
+                                ),
                                 tooltip: 'Close',
                               ),
                             ],
                           ),
                         ),
-                        Container(
-                          height: 0.5,
-                          color: AppColors.divider,
-                        ),
+                        Container(height: 0.5, color: AppColors.divider),
                         Expanded(
                           child: SingleChildScrollView(
                             controller: _popupScrollController,
@@ -637,13 +879,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                                 border: Border.all(color: AppColors.divider),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.18),
+                                    color: AppColors.black18,
                                     blurRadius: 24,
                                     offset: const Offset(0, 10),
                                   ),
                                 ],
                               ),
-                                child: _buildAnswerContent(state),
+                              child: _buildAnswerContent(state),
                             ),
                           ),
                         ),
@@ -662,7 +904,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _shareAsPost(HomeState state) async {
     final response = state.response!.trim();
     // Verse keys from citations
-    final verseKeys = state.citations.map((c) => c.verseKey).toList(growable: false);
+    final verseKeys = state.citations
+        .map((c) => c.verseKey)
+        .toList(growable: false);
 
     // Check sign-in state before opening the sheet
     final isSignedIn = QuranUserSessionService.instance.isSignedIn;
@@ -713,16 +957,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                 height: 28,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: AppColors.gold.withValues(alpha: 0.6),
+                  color: AppColors.gold60,
                 ),
               ),
               const SizedBox(height: 16),
               Text(
                 'Preparing your answer...',
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 13,
-                ),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
               ),
             ],
           ),
@@ -744,11 +985,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 end: Alignment.bottomRight,
                 colors: [
                   AppColors.card,
-                  AppColors.gold.withValues(alpha: 0.04),
+                  AppColors.gold04,
                 ],
               ),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+              border: Border.all(color: AppColors.gold15),
             ),
             child: Column(
               children: [
@@ -775,9 +1016,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: 0.1),
+                    color: AppColors.gold10,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -807,22 +1051,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           MarkdownBody(
             selectable: true,
             data: state.response!,
-            styleSheet: MarkdownStyleSheet(
-              p: const TextStyle(color: AppColors.textPrimary, fontSize: 15, height: 1.65),
-              strong: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700),
-              h1: TextStyle(color: AppColors.gold, fontSize: 20, fontWeight: FontWeight.w700),
-              h2: TextStyle(color: AppColors.gold, fontSize: 17, fontWeight: FontWeight.w700),
-              blockquoteDecoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: BorderRadius.circular(10),
-                border: Border(left: BorderSide(color: AppColors.gold, width: 3)),
-              ),
-              blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-              codeblockDecoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
+            styleSheet: AppTheme.markdownStyle,
           ),
         if (state.citations.isNotEmpty)
           Padding(
@@ -839,7 +1068,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: AppColors.gold.withValues(alpha: 0.5),
+                    color: AppColors.gold40,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -923,7 +1152,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                       ),
                     ],
                   ),
-                  if (citation.excerpt != null && citation.excerpt!.isNotEmpty) ...[
+                  if (citation.excerpt != null &&
+                      citation.excerpt!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
                       citation.excerpt!,
@@ -980,7 +1210,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             OutlinedButton.icon(
               onPressed: () => _toggleBookmark(verse),
               icon: Icon(
-                isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
+                isBookmarked
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_outline_rounded,
                 size: 16,
                 color: AppColors.gold,
               ),
@@ -990,9 +1222,14 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textPrimary,
-                side: BorderSide(color: AppColors.gold.withValues(alpha: 0.25)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                side: BorderSide(color: AppColors.gold25),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ],
@@ -1037,26 +1274,18 @@ class _HomePageState extends ConsumerState<HomePage> {
         _sendText(resolvedPrompt);
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
           color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider),
+          borderRadius: BorderRadius.circular(24),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: AppColors.gold.withValues(alpha: 0.7)),
-            const SizedBox(width: 8),
-            Text(
-              text,
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+        child: Text(
+          '"$text"',
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );
@@ -1117,6 +1346,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
   }
 }
+
 // ── Share-as-Post bottom sheet ────────────────────────────────────────────────
 
 class _SharePostSheet extends StatefulWidget {
@@ -1148,7 +1378,9 @@ class _SharePostSheetState extends State<_SharePostSheet> {
     // Pre-fill with a trimmed version of the LLM response, capped at 10 000 chars.
     final trimmed = widget.responseText.trim();
     _bodyController = TextEditingController(
-      text: trimmed.length > _maxChars ? trimmed.substring(0, _maxChars) : trimmed,
+      text: trimmed.length > _maxChars
+          ? trimmed.substring(0, _maxChars)
+          : trimmed,
     );
   }
 
@@ -1208,7 +1440,7 @@ class _SharePostSheetState extends State<_SharePostSheet> {
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.textMuted.withValues(alpha: 0.4),
+              color: AppColors.textMuted40,
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -1222,22 +1454,30 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                   height: 32,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.gold.withValues(alpha: 0.1),
+                    color: AppColors.gold10,
                   ),
-                  child: const Icon(Icons.share_rounded, size: 16, color: AppColors.gold),
+                  child: const Icon(
+                    Icons.share_rounded,
+                    size: 16,
+                    color: AppColors.gold,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   'Share to QuranReflect',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const Spacer(),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -1249,20 +1489,28 @@ class _SharePostSheetState extends State<_SharePostSheet> {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  Icon(Icons.lock_outline_rounded, size: 40, color: AppColors.textMuted),
+                  Icon(
+                    Icons.lock_outline_rounded,
+                    size: 40,
+                    color: AppColors.textMuted,
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'Sign in required',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Go to Settings → Account to sign in with your Quran Foundation account.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.5),
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
                   ),
                 ],
               ),
@@ -1278,34 +1526,47 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
-                      children: widget.verseKeys.map((k) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
-                        ),
-                        child: Text(
-                          k,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.gold,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )).toList(),
+                      children: widget.verseKeys
+                          .map(
+                            (k) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.gold10,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: AppColors.gold20,
+                                ),
+                              ),
+                              child: Text(
+                                k,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.gold,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
                     ),
                     const SizedBox(height: 14),
                   ],
                   // Editable body
                   AnimatedBuilder(
                     animation: _bodyController,
-                    builder: (_, __) {
+                    builder: (context, child) {
                       return TextField(
                         controller: _bodyController,
                         maxLines: 8,
                         maxLength: _maxChars,
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.55),
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          height: 1.55,
+                        ),
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: AppColors.surfaceLight,
@@ -1319,9 +1580,14 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(color: AppColors.gold.withValues(alpha: 0.4)),
+                            borderSide: BorderSide(
+                              color: AppColors.gold40,
+                            ),
                           ),
-                          counterStyle: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                          counterStyle: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
                           contentPadding: const EdgeInsets.all(14),
                         ),
                         onChanged: (_) => setState(() => _error = null),
@@ -1332,28 +1598,43 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                     const SizedBox(height: 8),
                     Text(
                       _error!,
-                      style: const TextStyle(color: AppColors.error, fontSize: 12),
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: (_isPosting || charCount < _minChars) ? null : _submit,
+                      onPressed: (_isPosting || charCount < _minChars)
+                          ? null
+                          : _submit,
                       icon: _isPosting
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Icon(Icons.send_rounded, size: 18),
-                      label: Text(_isPosting ? 'Posting...' : 'Post to QuranReflect'),
+                      label: Text(
+                        _isPosting ? 'Posting...' : 'Post to QuranReflect',
+                      ),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.gold,
                         foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                   ),

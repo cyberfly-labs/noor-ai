@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -17,55 +18,70 @@ class ShellPage extends StatefulWidget {
 class _ShellPageState extends State<ShellPage> {
   int _currentIndex = 0;
 
-  static const _routes = ['/home', '/quran', '/chat', '/daily-ayah', '/bookmarks', '/posts', '/settings'];
+  static const _routes = [
+    '/home',
+    '/quran',
+    '/chat',
+    '/daily-ayah',
+    '/bookmarks',
+    '/posts',
+    '/settings',
+  ];
 
   @override
-  Widget build(BuildContext context) {
-    // Sync index with current route
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncIndex();
+  }
+
+  void _syncIndex() {
     final location = GoRouterState.of(context).uri.toString();
     for (int i = 0; i < _routes.length; i++) {
       if (location.startsWith(_routes[i])) {
         if (_currentIndex != i) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _currentIndex = i);
-          });
+          setState(() => _currentIndex = i);
         }
         break;
       }
     }
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: widget.child,
       extendBody: true,
       bottomNavigationBar: ClipRRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.85),
-              border: Border(
-                top: BorderSide(color: AppColors.divider.withValues(alpha: 0.6), width: 0.5),
-              ),
-            ),
+            decoration: AppColors.navBarDecoration,
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: List.generate(_routes.length, (index) {
-                    return _NavItem(
-                      icon: _iconFor(index, false),
-                      activeIcon: _iconFor(index, true),
-                      label: _labelFor(index),
-                      isSelected: _currentIndex == index,
-                      onTap: () {
-                        if (index != _currentIndex) {
-                          setState(() => _currentIndex = index);
-                          context.go(_routes[index]);
-                        }
-                      },
-                    );
-                  }),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: List.generate(_routes.length, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: _NavItem(
+                          icon: _iconFor(index, false),
+                          activeIcon: _iconFor(index, true),
+                          label: _labelFor(index),
+                          isSelected: _currentIndex == index,
+                          onTap: () {
+                            if (index != _currentIndex) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _currentIndex = index);
+                              context.go(_routes[index]);
+                            }
+                          },
+                        ),
+                      );
+                    }),
+                  ),
                 ),
               ),
             ),
@@ -84,7 +100,9 @@ class _ShellPageState extends State<ShellPage> {
       case 2:
         return active ? Icons.chat_rounded : Icons.chat_outlined;
       case 3:
-        return active ? Icons.auto_stories_rounded : Icons.auto_stories_outlined;
+        return active
+            ? Icons.auto_stories_rounded
+            : Icons.auto_stories_outlined;
       case 4:
         return active ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded;
       case 5:
@@ -141,13 +159,18 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        constraints: const BoxConstraints(minWidth: 74),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: isSelected
             ? BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14),
+                color: AppColors.gold10,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.gold15),
               )
-            : null,
+            : BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.transparent),
+              ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

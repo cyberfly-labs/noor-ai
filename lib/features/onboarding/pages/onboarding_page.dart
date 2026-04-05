@@ -373,7 +373,7 @@ class _OnboardingPageState extends State<OnboardingPage>
                           'One-time setup · Everything stays on your device',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.textMuted.withValues(alpha: 0.6),
+                            color: AppColors.textMuted60,
                             fontSize: 11,
                           ),
                         ),
@@ -472,8 +472,8 @@ class _CrescentEmblem extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  AppColors.gold.withValues(alpha: 0.12),
-                  AppColors.gold.withValues(alpha: 0.03),
+                  AppColors.gold12,
+                  AppColors.gold03,
                   Colors.transparent,
                 ],
                 stops: const [0.0, 0.55, 1.0],
@@ -497,7 +497,7 @@ class _CrescentEmblem extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.gold.withValues(alpha: 0.65),
+                    color: AppColors.gold65,
                     blurRadius: 14,
                     spreadRadius: 2,
                   ),
@@ -538,7 +538,7 @@ class _CrescentPainter extends CustomPainter {
     canvas.drawPath(
       crescent.shift(const Offset(0, 2)),
       Paint()
-        ..color = AppColors.gold.withValues(alpha: 0.3)
+        ..color = AppColors.gold30
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
     );
     canvas.drawPath(crescent, paint);
@@ -573,9 +573,9 @@ class _FeaturePillRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight.withValues(alpha: 0.55),
+        color: AppColors.surfaceLightAlpha55,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.12)),
+        border: Border.all(color: AppColors.gold12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -644,7 +644,7 @@ class _GlassStatusCard extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: AppColors.surface.withValues(alpha: 0.45),
+            color: AppColors.surfaceAlpha45,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: statusAccent.withValues(alpha: 0.18)),
           ),
@@ -766,7 +766,7 @@ class _PrimaryActionButton extends StatelessWidget {
         boxShadow: onPressed != null
             ? [
                 BoxShadow(
-                  color: AppColors.gold.withValues(alpha: 0.35),
+                  color: AppColors.gold35,
                   blurRadius: 24,
                   offset: const Offset(0, 6),
                 ),

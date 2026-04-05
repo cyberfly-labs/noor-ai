@@ -50,9 +50,9 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.gold.withValues(alpha: 0.08),
+                        color: AppColors.gold08,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+                        border: Border.all(color: AppColors.gold15),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -105,7 +105,7 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                           decoration: BoxDecoration(
-                                            color: AppColors.gold.withValues(alpha: 0.1),
+                                            color: AppColors.gold10,
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
@@ -123,7 +123,7 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
                                           height: 32,
                                           child: IconButton(
                                             icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                                            color: AppColors.textMuted.withValues(alpha: 0.6),
+                                            color: AppColors.textMuted60,
                                             padding: EdgeInsets.zero,
                                             onPressed: () {
                                               ref.read(bookmarksProvider.notifier).remove(bookmark.verseKey);
@@ -167,7 +167,7 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
                                         child: Row(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Icon(Icons.notes_rounded, size: 14, color: AppColors.textMuted.withValues(alpha: 0.6)),
+                                            Icon(Icons.notes_rounded, size: 14, color: AppColors.textMuted60),
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
@@ -210,7 +210,7 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
               color: AppColors.surfaceLight,
               border: Border.all(color: AppColors.divider),
             ),
-            child: Icon(Icons.bookmark_outline_rounded, size: 32, color: AppColors.textMuted.withValues(alpha: 0.5)),
+            child: Icon(Icons.bookmark_outline_rounded, size: 32, color: AppColors.textMuted50),
           ),
           const SizedBox(height: 20),
           const Text(

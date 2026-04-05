@@ -99,9 +99,9 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppColors.gold.withValues(alpha: 0.08),
+                              color: AppColors.gold08,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+                              border: Border.all(color: AppColors.gold15),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -141,7 +141,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                           child: Column(
                             children: [
                               // Ornament
-                              Icon(Icons.auto_awesome_rounded, size: 20, color: AppColors.gold.withValues(alpha: 0.4)),
+                              Icon(Icons.auto_awesome_rounded, size: 20, color: AppColors.gold40),
                               const SizedBox(height: 20),
 
                               // Arabic text
@@ -178,7 +178,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                                 decoration: BoxDecoration(
-                                  color: AppColors.gold.withValues(alpha: 0.1),
+                                  color: AppColors.gold10,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
@@ -253,7 +253,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                       height: 14,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: AppColors.gold.withValues(alpha: 0.6),
+                                        color: AppColors.gold60,
                                       ),
                                     ),
                                 ],
@@ -294,7 +294,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                           'Reflect on this verse today.\nCome back tomorrow for a new one.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: AppColors.textMuted.withValues(alpha: 0.6),
+                            color: AppColors.textMuted60,
                             fontSize: 12,
                             height: 1.5,
                           ),

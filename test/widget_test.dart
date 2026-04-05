@@ -13,6 +13,7 @@ import 'package:noor_ai/app.dart';
 void main() {
   testWidgets('App launches smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: NoorAiApp()));
-    expect(find.text('Noor AI'), findsWidgets);
+    expect(find.text('Starting Noor AI...'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
   });
 }

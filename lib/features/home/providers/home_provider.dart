@@ -21,7 +21,7 @@ import '../../../core/utils/prompt_templates.dart';
 const _uuid = Uuid();
 const _unset = Object();
 const _strictGroundingFailureMessage =
-  'I could not find this in the provided Quran or Tafsir المصادر.';
+    'I could not find this in the provided Quran or Tafsir المصادر.';
 
 /// Voice pipeline state
 enum VoiceState { idle, listening, processing, speaking }
@@ -75,6 +75,10 @@ class HomeState {
 class HomeNotifier extends StateNotifier<HomeState> {
   HomeNotifier() : super(const HomeState());
 
+  static const double _speechDetectedDb = -32;
+  static const Duration _silenceSubmitDelay = Duration(milliseconds: 1400);
+  static const Duration _maxListeningDuration = Duration(seconds: 12);
+
   final _voiceService = VoiceService.instance;
   final _llmService = LlmService.instance;
   final _quranApi = QuranApiService.instance;
@@ -84,6 +88,10 @@ class HomeNotifier extends StateNotifier<HomeState> {
 
   String? _recordingPath;
   int _speechSessionId = 0;
+  StreamSubscription<dynamic>? _amplitudeSubscription;
+  Timer? _silenceTimer;
+  Timer? _maxListeningTimer;
+  bool _heardSpeechInCurrentSession = false;
   final Map<String, AsrNormalizationResult> _normalizationCache =
       <String, AsrNormalizationResult>{};
 
@@ -110,6 +118,8 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   Future<void> _startListening() async {
+    _cancelListeningWatchers();
+    _heardSpeechInCurrentSession = false;
     state = const HomeState(voiceState: VoiceState.listening);
     _recordingPath = await _voiceService.startRecording();
     if (_recordingPath == null) {
@@ -117,22 +127,60 @@ class HomeNotifier extends StateNotifier<HomeState> {
         voiceState: VoiceState.idle,
         error: 'Failed to start recording. Check microphone permission.',
       );
+      return;
     }
+
+    _amplitudeSubscription = _voiceService
+        .onAmplitudeChanged(const Duration(milliseconds: 200))
+        .listen((amplitude) {
+          if (state.voiceState != VoiceState.listening) {
+            return;
+          }
+
+          final current = amplitude.current;
+          if (current > _speechDetectedDb) {
+            _heardSpeechInCurrentSession = true;
+            _silenceTimer?.cancel();
+            return;
+          }
+
+          if (_heardSpeechInCurrentSession && _silenceTimer == null) {
+            _silenceTimer = Timer(_silenceSubmitDelay, () async {
+              _silenceTimer = null;
+              if (state.voiceState == VoiceState.listening) {
+                await _stopAndProcess();
+              }
+            });
+          }
+        });
+
+    _maxListeningTimer = Timer(_maxListeningDuration, () async {
+      if (state.voiceState == VoiceState.listening) {
+        await _stopAndProcess();
+      }
+    });
   }
 
   Future<void> _stopAndProcess() async {
+    _cancelListeningWatchers();
     state = state.copyWith(voiceState: VoiceState.processing);
 
     final audioPath = await _voiceService.stopRecording();
     if (audioPath == null) {
-      state = state.copyWith(voiceState: VoiceState.idle, error: 'Recording failed');
+      state = state.copyWith(
+        voiceState: VoiceState.idle,
+        error: 'Recording failed',
+      );
       return;
     }
 
     // Transcribe
     final transcription = await _voiceService.transcribe(audioPath);
     if (transcription == null || transcription.isEmpty) {
-      state = state.copyWith(voiceState: VoiceState.idle, error: 'Could not understand speech');
+      state = state.copyWith(
+        voiceState: VoiceState.idle,
+        error: 'Could not understand speech',
+      );
       return;
     }
 
@@ -142,8 +190,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
     if (normalized == null) {
       normalized = AsrNormalizationPipeline.instance.process(transcription);
       if (normalized.needsLlmFallback) {
-        final rewritePrompt =
-            PromptTemplates.rewriteAsrTranscript(transcript: transcription);
+        final rewritePrompt = PromptTemplates.rewriteAsrTranscript(
+          transcript: transcription,
+        );
         final buffer = StringBuffer();
         await for (final token in _llmService.generate(rewritePrompt)) {
           buffer.write(token);
@@ -165,13 +214,11 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   /// Process text input (from voice or direct text entry)
-  Future<void> processTextInput(
-    String text, {
-    Intent? normalizedIntent,
-  }) async {
+  Future<void> processTextInput(String text, {Intent? normalizedIntent}) async {
     final traceTag = PerfTrace.nextTag('home.processTextInput');
     final totalSw = PerfTrace.start(traceTag, 'request');
 
+    _cancelListeningWatchers();
     _speechSessionId += 1;
     _llmService.cancelGeneration();
     await _voiceService.stopPlayback();
@@ -188,12 +235,14 @@ class HomeNotifier extends StateNotifier<HomeState> {
 
     // Save user message
     final saveUserSw = Stopwatch()..start();
-    await _db.insertMessage(ChatMessage(
-      id: _uuid.v4(),
-      content: text,
-      role: 'user',
-      createdAt: DateTime.now(),
-    ));
+    await _db.insertMessage(
+      ChatMessage(
+        id: _uuid.v4(),
+        content: text,
+        role: 'user',
+        createdAt: DateTime.now(),
+      ),
+    );
     PerfTrace.mark(traceTag, 'save_user_message', saveUserSw);
 
     // Parse intent
@@ -237,8 +286,25 @@ class HomeNotifier extends StateNotifier<HomeState> {
     }
   }
 
+  void _cancelListeningWatchers() {
+    _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+    _maxListeningTimer?.cancel();
+    _maxListeningTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _cancelListeningWatchers();
+    super.dispose();
+  }
+
   Future<void> _handleExplainAyah(Intent intent) async {
-    final verseKey = intent.verseKey ?? '${intent.surahNumber ?? 1}:${intent.ayahNumber ?? 1}';
+    final verseKey =
+        intent.verseKey ??
+        '${intent.surahNumber ?? 1}:${intent.ayahNumber ?? 1}';
     final evidence = await _quranRag.retrieveVerseEvidence(
       verseKey,
       queryHint: intent.rawText,
@@ -246,7 +312,8 @@ class HomeNotifier extends StateNotifier<HomeState> {
     if (evidence == null) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'I could not retrieve Quran source material for verse $verseKey. Please try again.',
+        response:
+            'I could not retrieve Quran source material for verse $verseKey. Please try again.',
       );
       return;
     }
@@ -295,19 +362,27 @@ class HomeNotifier extends StateNotifier<HomeState> {
     }
 
     final sampleVerseKeys = _sampleSurahVerseKeys(surahNum, ayahCount);
-  final evidence = await _buildGroundedVerseEvidence(sampleVerseKeys, maxItems: 3);
+    final evidence = await _buildGroundedVerseEvidence(
+      sampleVerseKeys,
+      maxItems: 3,
+    );
     if (evidence.isEmpty) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'I could not retrieve enough Quran source material for Surah $surahNum from the bundled RAG database, so I will not generate an unsourced overview.',
+        response:
+            'I could not retrieve enough Quran source material for Surah $surahNum from the bundled RAG database, so I will not generate an unsourced overview.',
       );
       return;
     }
 
     final primaryEvidence = evidence.first;
     final verseParts = primaryEvidence.verseKey.split(':');
-    final currentSurah = verseParts.length == 2 ? int.tryParse(verseParts[0]) ?? surahNum : surahNum;
-    final currentAyah = verseParts.length == 2 ? int.tryParse(verseParts[1]) ?? 1 : 1;
+    final currentSurah = verseParts.length == 2
+        ? int.tryParse(verseParts[0]) ?? surahNum
+        : surahNum;
+    final currentAyah = verseParts.length == 2
+        ? int.tryParse(verseParts[1]) ?? 1
+        : 1;
     final surahName = _displaySurahName(surahNum);
 
     state = state.copyWith(
@@ -336,7 +411,8 @@ class HomeNotifier extends StateNotifier<HomeState> {
     if (intent.surahNumber == null) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'I could not identify which surah or verse to play. Please say something like "play surah mulk" or "play ayah 2:255".',
+        response:
+            'I could not identify which surah or verse to play. Please say something like "play surah mulk" or "play ayah 2:255".',
       );
       return;
     }
@@ -371,13 +447,18 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   Future<void> _handleTranslation(Intent intent) async {
-    final verseKey = intent.verseKey ?? '${intent.surahNumber ?? 1}:${intent.ayahNumber ?? 1}';
+    final verseKey =
+        intent.verseKey ??
+        '${intent.surahNumber ?? 1}:${intent.ayahNumber ?? 1}';
     final evidence = await _quranRag.retrieveVerseEvidence(
       verseKey,
       queryHint: intent.rawText,
     );
     if (evidence == null) {
-      state = state.copyWith(voiceState: VoiceState.idle, response: 'Verse not found.');
+      state = state.copyWith(
+        voiceState: VoiceState.idle,
+        response: 'Verse not found.',
+      );
       return;
     }
 
@@ -425,12 +506,18 @@ class HomeNotifier extends StateNotifier<HomeState> {
       ];
       citations = const <GroundingCitation>[];
     } else {
-      verseReferences = topEvidence.map((item) => item.verseKey).toList(growable: false);
-      verseTranslations = topEvidence.map((item) => item.translationText).toList(growable: false);
+      verseReferences = topEvidence
+          .map((item) => item.verseKey)
+          .toList(growable: false);
+      verseTranslations = topEvidence
+          .map((item) => item.translationText)
+          .toList(growable: false);
       citations = _citationsFromEvidence(topEvidence);
     }
 
-    debugPrint('HomeNotifier: emotional evidence_count=${evidence.length} verse_keys=${verseReferences.join(", ")}');
+    debugPrint(
+      'HomeNotifier: emotional evidence_count=${evidence.length} verse_keys=${verseReferences.join(", ")}',
+    );
 
     final prompt = PromptTemplates.emotionalGuidance(
       emotion: emotion,
@@ -453,7 +540,8 @@ class HomeNotifier extends StateNotifier<HomeState> {
     if (evidence.isEmpty) {
       state = state.copyWith(
         voiceState: VoiceState.idle,
-        response: 'I could not retrieve enough Quran source material for that question, so I will not generate an unsourced answer.',
+        response:
+            'I could not retrieve enough Quran source material for that question, so I will not generate an unsourced answer.',
       );
       return;
     }
@@ -472,7 +560,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
         .map((item) => item.translationText)
         .toList(growable: false);
 
-    debugPrint('HomeNotifier: evidence_count=${evidence.length} top_count=${topEvidence.length} verse_keys=${verseReferences.join(", ")}');
+    debugPrint(
+      'HomeNotifier: evidence_count=${evidence.length} top_count=${topEvidence.length} verse_keys=${verseReferences.join(", ")}',
+    );
 
     // Pass rawText (user's language) as the question so LLM responds in kind.
     final prompt = PromptTemplates.groundedGeneralQuestion(
@@ -482,7 +572,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
       verseReferences: verseReferences,
       verseTranslations: verseTranslations,
     );
-    debugPrint('HomeNotifier: prompt_chars=${prompt.length} slots_preview=${prompt.substring(prompt.indexOf("📖") < 0 ? 0 : prompt.indexOf("📖"), (prompt.indexOf("📚") < 0 ? prompt.length : prompt.indexOf("📚")).clamp(0, prompt.length))}');
+    debugPrint(
+      'HomeNotifier: prompt_chars=${prompt.length} slots_preview=${prompt.substring(prompt.indexOf("📖") < 0 ? 0 : prompt.indexOf("📖"), (prompt.indexOf("📚") < 0 ? prompt.length : prompt.indexOf("📚")).clamp(0, prompt.length))}',
+    );
     await _streamLlmResponse(
       prompt,
       intent,
@@ -493,14 +585,19 @@ class HomeNotifier extends StateNotifier<HomeState> {
   Future<List<_GroundedVerseEvidence>> _buildGlobalQuestionEvidence(
     String rawQuery,
   ) async {
-    final evidence = await _quranRag.retrieveGroundedEvidence(rawQuery, limit: 5);
+    final evidence = await _quranRag.retrieveGroundedEvidence(
+      rawQuery,
+      limit: 5,
+    );
     return evidence
-        .map((item) => _GroundedVerseEvidence(
-              verseKey: item.verseKey,
-              translationText: item.translationText,
-              tafsirText: item.tafsirText,
-              tafsirSource: item.tafsirSource,
-            ))
+        .map(
+          (item) => _GroundedVerseEvidence(
+            verseKey: item.verseKey,
+            translationText: item.translationText,
+            tafsirText: item.tafsirText,
+            tafsirSource: item.tafsirSource,
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -508,11 +605,13 @@ class HomeNotifier extends StateNotifier<HomeState> {
     List<_GroundedVerseEvidence> evidence,
   ) {
     return evidence
-        .map((item) => GroundingCitation(
-              verseKey: item.verseKey,
-              sourceLabel: item.tafsirSource,
-              excerpt: item.translationText,
-            ))
+        .map(
+          (item) => GroundingCitation(
+            verseKey: item.verseKey,
+            sourceLabel: item.tafsirSource,
+            excerpt: item.translationText,
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -525,12 +624,14 @@ class HomeNotifier extends StateNotifier<HomeState> {
       maxItems: maxItems,
     );
     return evidence
-        .map((item) => _GroundedVerseEvidence(
-              verseKey: item.verseKey,
-              translationText: item.translationText,
-              tafsirText: item.tafsirText,
-              tafsirSource: item.tafsirSource,
-            ))
+        .map(
+          (item) => _GroundedVerseEvidence(
+            verseKey: item.verseKey,
+            translationText: item.translationText,
+            tafsirText: item.tafsirText,
+            tafsirSource: item.tafsirSource,
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -553,7 +654,8 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   String _displaySurahName(int surahNumber) {
-    if (surahNumber < 1 || surahNumber > SurahLookup.canonicalSurahNames.length) {
+    if (surahNumber < 1 ||
+        surahNumber > SurahLookup.canonicalSurahNames.length) {
       return 'Surah $surahNumber';
     }
 
@@ -576,7 +678,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
     final promptWordCount = prompt.trim().isEmpty
         ? 0
         : prompt.trim().split(RegExp(r'\s+')).length;
-    final evidenceBlockCount = RegExp(r'\[QURAN\]|\[TAFSIR\]').allMatches(prompt).length;
+    final evidenceBlockCount = RegExp(
+      r'\[QURAN\]|\[TAFSIR\]',
+    ).allMatches(prompt).length;
     if (PerfTrace.enabled) {
       debugPrint(
         'PerfTrace[$traceTag] prompt_chars=${prompt.length} '
@@ -637,15 +741,14 @@ class HomeNotifier extends StateNotifier<HomeState> {
     }
 
     final rawResponse = buffer.toString();
-    debugPrint('HomeNotifier: raw_response_chars=${rawResponse.length} raw_preview=${rawResponse.substring(0, rawResponse.length.clamp(0, 400))}');
+    debugPrint(
+      'HomeNotifier: raw_response_chars=${rawResponse.length} raw_preview=${rawResponse.substring(0, rawResponse.length.clamp(0, 400))}',
+    );
     final repairedResponse = _repairGroundedVerseCoverage(
       rawResponse,
       citations,
     );
-    final fullResponse = _enforceStrictGrounding(
-      repairedResponse,
-      citations,
-    );
+    final fullResponse = _enforceStrictGrounding(repairedResponse, citations);
     state = state.copyWith(
       isStreaming: false,
       voiceState: VoiceState.idle,
@@ -656,7 +759,11 @@ class HomeNotifier extends StateNotifier<HomeState> {
 
     final saveAssistantSw = Stopwatch()..start();
     _saveAssistantMessage(fullResponse, intent);
-    PerfTrace.mark(traceTag, 'save_assistant_message_dispatched', saveAssistantSw);
+    PerfTrace.mark(
+      traceTag,
+      'save_assistant_message_dispatched',
+      saveAssistantSw,
+    );
 
     // TTS playback (fire and forget)
     PerfTrace.mark(traceTag, 'tts_dispatch', totalSw);
@@ -665,14 +772,16 @@ class HomeNotifier extends StateNotifier<HomeState> {
   }
 
   void _saveAssistantMessage(String response, Intent intent) {
-    _db.insertMessage(ChatMessage(
-      id: _uuid.v4(),
-      content: response,
-      role: 'assistant',
-      intent: intent.type.name,
-      verseKey: intent.verseKey,
-      createdAt: DateTime.now(),
-    ));
+    _db.insertMessage(
+      ChatMessage(
+        id: _uuid.v4(),
+        content: response,
+        role: 'assistant',
+        intent: intent.type.name,
+        verseKey: intent.verseKey,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> _speakResponse(String text) async {
@@ -681,7 +790,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
     try {
       await _voiceService.speak(text);
     } finally {
-      if (mounted && _speechSessionId == sessionId && state.voiceState == VoiceState.speaking) {
+      if (mounted &&
+          _speechSessionId == sessionId &&
+          state.voiceState == VoiceState.speaking) {
         state = state.copyWith(voiceState: VoiceState.idle);
       }
     }
@@ -705,10 +816,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return response;
     }
 
-    final citedVerseKeys = _extractReferencedVerseKeys(
-      response,
-      seenVerseKeys,
-    );
+    final citedVerseKeys = _extractReferencedVerseKeys(response, seenVerseKeys);
     if (citedVerseKeys.length >= 2) {
       return response;
     }
@@ -755,7 +863,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
     }
 
     final referencedVerseKeys = _extractAllVerseKeys(response);
-    final unsupportedVerseKeys = referencedVerseKeys.difference(allowedVerseKeys);
+    final unsupportedVerseKeys = referencedVerseKeys.difference(
+      allowedVerseKeys,
+    );
     if (unsupportedVerseKeys.isEmpty) {
       return response;
     }

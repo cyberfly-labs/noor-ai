@@ -88,8 +88,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                                       height: 30,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: AppColors.gold.withValues(alpha: 0.1),
-                                        border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+                                        color: AppColors.gold10,
+                                        border: Border.all(color: AppColors.gold20),
                                       ),
                                       child: const Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.gold),
                                     ),
@@ -99,7 +99,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                                     child: Container(
                                       padding: const EdgeInsets.all(14),
                                       decoration: BoxDecoration(
-                                        color: isUser ? AppColors.gold.withValues(alpha: 0.1) : AppColors.surfaceLight,
+                                        color: isUser ? AppColors.gold10 : AppColors.surfaceLight,
                                         borderRadius: BorderRadius.only(
                                           topLeft: const Radius.circular(16),
                                           topRight: const Radius.circular(16),
@@ -107,7 +107,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                                           bottomRight: Radius.circular(isUser ? 4 : 16),
                                         ),
                                         border: Border.all(
-                                          color: isUser ? AppColors.gold.withValues(alpha: 0.15) : AppColors.divider,
+                                          color: isUser ? AppColors.gold15 : AppColors.divider,
                                         ),
                                       ),
                                       child: Column(
@@ -129,7 +129,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                                           const SizedBox(height: 4),
                                           Text(
                                             timeStr,
-                                            style: TextStyle(fontSize: 10, color: AppColors.textMuted.withValues(alpha: 0.6)),
+                                            style: TextStyle(fontSize: 10, color: AppColors.textMuted60),
                                           ),
                                         ],
                                       ),
@@ -173,7 +173,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
               color: AppColors.surfaceLight,
               border: Border.all(color: AppColors.divider),
             ),
-            child: Icon(Icons.chat_bubble_outline_rounded, size: 30, color: AppColors.textMuted.withValues(alpha: 0.5)),
+            child: Icon(Icons.chat_bubble_outline_rounded, size: 30, color: AppColors.textMuted50),
           ),
           const SizedBox(height: 20),
           const Text(

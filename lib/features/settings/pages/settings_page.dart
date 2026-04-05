@@ -241,17 +241,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 80),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            MediaQuery.of(context).padding.bottom + 80,
+          ),
           children: [
-            // ── Header ──────────────────────────────────
-            Text(
-              'Settings',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-            ),
+            _buildOverviewCard(),
             const SizedBox(height: 24),
 
             _sectionHeader('AI Models'),
@@ -274,11 +271,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                     )
                   : _modelsDownloaded
-                      ? const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22)
-                      : TextButton(
-                          onPressed: _downloadModels,
-                          child: const Text('Download', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700)),
+                  ? const Icon(
+                      Icons.check_circle_rounded,
+                      color: Colors.green,
+                      size: 22,
+                    )
+                  : TextButton(
+                      onPressed: _downloadModels,
+                      child: const Text(
+                        'Download',
+                        style: TextStyle(
+                          color: AppColors.gold,
+                          fontWeight: FontWeight.w700,
                         ),
+                      ),
+                    ),
             ),
             if (_downloadStatus.isNotEmpty)
               Padding(
@@ -288,7 +295,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   children: [
                     Text(
                       _downloadStatus,
-                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                     if (_isDownloading) ...[
                       const SizedBox(height: 8),
@@ -298,13 +308,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           minHeight: 6,
                           value: _downloadProgress.progress,
                           backgroundColor: AppColors.surfaceLight,
-                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.gold),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppColors.gold,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${(_downloadProgress.progress * 100).round()}% complete',
-                        style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
                       ),
                     ],
                   ],
@@ -347,14 +362,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Center(
               child: Text(
                 'Made with devotion',
-                style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.5), fontSize: 12),
+                style: TextStyle(
+                  color: AppColors.textMuted50,
+                  fontSize: 12,
+                ),
               ),
             ),
             const SizedBox(height: 6),
             Center(
               child: Text(
                 '﷽',
-                style: TextStyle(color: AppColors.gold.withValues(alpha: 0.4), fontSize: 20),
+                style: TextStyle(
+                  color: AppColors.gold40,
+                  fontSize: 20,
+                ),
               ),
             ),
           ],
@@ -378,7 +399,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           Row(
             children: [
-              Icon(Icons.notifications_active_rounded, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
+              Icon(
+                Icons.notifications_active_rounded,
+                color: AppColors.gold60,
+                size: 20,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -386,21 +411,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   children: [
                     const Text(
                       'Quran Reading Reminder',
-                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       _reminderEnabled
                           ? 'Daily reminder at $timeLabel'
                           : 'Get a daily nudge to read Quran',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
               ),
               Switch.adaptive(
                 value: _reminderEnabled,
-                activeColor: AppColors.gold,
+                activeThumbColor: AppColors.gold,
+                activeTrackColor: AppColors.gold35,
                 onChanged: _toggleReminder,
               ),
             ],
@@ -411,7 +445,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               onTap: _pickReminderTime,
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(10),
@@ -419,14 +456,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.access_time_rounded, size: 18, color: AppColors.gold),
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 18,
+                      color: AppColors.gold,
+                    ),
                     const SizedBox(width: 10),
                     Text(
                       timeLabel,
-                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const Spacer(),
-                    Text('Change', style: TextStyle(color: AppColors.gold, fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text(
+                      'Change',
+                      style: TextStyle(
+                        color: AppColors.gold,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -441,12 +493,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final session = _userSession;
     final isSignedIn = session?.accessToken.isNotEmpty ?? false;
     final isBusy = _userSessionService.isBusy;
-    final environment = _userSessionService.config.environmentLabel;
     final subtitle = isSignedIn
-        ? 'Signed in to $environment. Quran Foundation bookmarks, reading progress, and streak sync are enabled.'
+      ? 'Signed in with Quran Foundation. Bookmarks, reading progress, and streak sync are enabled.'
         : (_userAuthError?.trim().isNotEmpty == true
-            ? _userAuthError!
-            : 'Sign in with Quran Foundation OAuth to sync bookmarks, reading progress, and streaks.');
+              ? _userAuthError!
+        : 'Sign in with your Quran Foundation account to sync bookmarks, reading progress, and streaks.');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -464,7 +515,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Icon(Icons.account_circle_outlined, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
+                child: Icon(
+                  Icons.account_circle_outlined,
+                  color: AppColors.gold60,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -473,12 +528,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   children: [
                     const Text(
                       'Quran Foundation Account',
-                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
@@ -494,14 +557,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 FilledButton(
                   onPressed: isBusy ? null : _startUserSignIn,
                   child: isBusy
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Text('Sign In'),
                 ),
               if (isSignedIn)
                 OutlinedButton(
-                  onPressed: isBusy || _isSyncingAccount ? null : _syncAccountNow,
+                  onPressed: isBusy || _isSyncingAccount
+                      ? null
+                      : _syncAccountNow,
                   child: _isSyncingAccount
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Text('Sync Now'),
                 ),
               if (isSignedIn)
@@ -537,6 +610,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required String subtitle,
     Widget? trailing,
   }) {
+    final trailingWidgets = trailing == null
+        ? const <Widget>[]
+        : <Widget>[trailing];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
@@ -550,7 +627,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
+            child: Icon(
+              icon,
+              color: AppColors.gold60,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -559,19 +640,126 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
           ),
-          ?trailing,
+          ...trailingWidgets,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewCard() {
+    final accountConnected = _userSession?.accessToken.isNotEmpty ?? false;
+    final modelsLabel = _modelsDownloaded ? 'Models ready' : 'Models pending';
+    final reminderLabel = _reminderEnabled
+        ? 'Reminder ${_reminderTime.format(context)}'
+        : 'Reminder off';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.cardHighlight,
+            AppColors.surfaceLight,
+            AppColors.background,
+          ],
+        ),
+        border: Border.all(color: AppColors.gold14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Settings',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tune downloads, audio, reminders, and your Quran Foundation connection in one place.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _overviewPill(
+                icon: _modelsDownloaded
+                    ? Icons.cloud_done_rounded
+                    : Icons.download_rounded,
+                label: modelsLabel,
+              ),
+              _overviewPill(
+                icon: accountConnected
+                    ? Icons.verified_user_rounded
+                    : Icons.person_outline_rounded,
+                label: accountConnected
+                    ? 'Account connected'
+                    : 'Account not linked',
+              ),
+              _overviewPill(
+                icon: _reminderEnabled
+                    ? Icons.notifications_active_rounded
+                    : Icons.notifications_off_rounded,
+                label: reminderLabel,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _overviewPill({required IconData icon, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.gold08,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.gold12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.gold),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -594,7 +782,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Icon(Icons.volume_up_rounded, color: AppColors.gold.withValues(alpha: 0.6), size: 20),
+                child: Icon(
+                  Icons.volume_up_rounded,
+                  color: AppColors.gold60,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -603,12 +795,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   children: [
                     const Text(
                       'Audio Boost',
-                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       'Boost spoken answers and keep recitation playback at the device speaker volume.',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
@@ -627,15 +827,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              initialValue: _availableTtsVoices.any(
-                (voice) => voice.id == _ttsVoiceId,
-              )
+              initialValue:
+                  _availableTtsVoices.any((voice) => voice.id == _ttsVoiceId)
                   ? _ttsVoiceId
                   : _availableTtsVoices.first.id,
               dropdownColor: AppColors.surfaceLight,
-              decoration: const InputDecoration(
-                labelText: 'Voice style',
-              ),
+              decoration: const InputDecoration(labelText: 'Voice style'),
               items: _availableTtsVoices
                   .map(
                     (voice) => DropdownMenuItem<String>(
@@ -733,5 +930,4 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
   }
-
 }

@@ -163,7 +163,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                   label: const Text('Read', style: TextStyle(fontWeight: FontWeight.w700)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.gold,
-                    side: BorderSide(color: AppColors.gold.withValues(alpha: 0.25)),
+                    side: BorderSide(color: AppColors.gold25),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -352,7 +352,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: AppColors.gold.withValues(alpha: 0.08),
+        color: AppColors.gold08,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(

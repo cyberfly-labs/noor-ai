@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
@@ -27,7 +28,44 @@ class AppColors {
   static const Color success = Color(0xFF3ECFA5);
   static const Color divider = Color(0xFF1C2A3A);
   static const Color shimmer = Color(0xFF1C2A3A);
+  // ── Pre-computed alpha variants (avoid .withValues in build) ────
+  static const Color gold85 = Color(0xD9D4A84B); // gold @ 0.85
+  static const Color gold60 = Color(0x99D4A84B); // gold @ 0.60
+  static const Color gold40 = Color(0x66D4A84B); // gold @ 0.40
+  static const Color gold35 = Color(0x59D4A84B); // gold @ 0.35
+  static const Color gold25 = Color(0x40D4A84B); // gold @ 0.25
+  static const Color gold15 = Color(0x26D4A84B); // gold @ 0.15
+  static const Color gold12 = Color(0x1FD4A84B); // gold @ 0.12
+  static const Color gold10 = Color(0x1AD4A84B); // gold @ 0.10
+  static const Color gold08 = Color(0x14D4A84B); // gold @ 0.08
+  static const Color gold06 = Color(0x0FD4A84B); // gold @ 0.06
+  static const Color gold04 = Color(0x0AD4A84B); // gold @ 0.04
+  static const Color gold03 = Color(0x08D4A84B); // gold @ 0.03
+  static const Color gold20 = Color(0x33D4A84B); // gold @ 0.20
+  static const Color gold18 = Color(0x2ED4A84B); // gold @ 0.18
+  static const Color gold14 = Color(0x24D4A84B); // gold @ 0.14
+  static const Color gold65 = Color(0xA6D4A84B); // gold @ 0.65
+  static const Color gold30 = Color(0x4DD4A84B); // gold @ 0.30
 
+  static const Color textMuted80 = Color(0xCC5A6A7E); // textMuted @ 0.80
+  static const Color textMuted60 = Color(0x995A6A7E); // textMuted @ 0.60
+  static const Color textMuted50 = Color(0x805A6A7E); // textMuted @ 0.50
+  static const Color textMuted40 = Color(0x665A6A7E); // textMuted @ 0.40
+  static const Color textMuted30 = Color(0x4D5A6A7E); // textMuted @ 0.30
+  static const Color textMuted08 = Color(0x145A6A7E); // textMuted @ 0.08
+
+  static const Color surfaceAlpha85 = Color(0xD90E1620); // surface @ 0.85
+  static const Color surfaceAlpha45 = Color(0x730E1620); // surface @ 0.45
+  static const Color surfaceLightAlpha60 = Color(0x9915202E); // surfaceLight @ 0.60
+  static const Color surfaceLightAlpha55 = Color(0x8C15202E); // surfaceLight @ 0.55
+  static const Color dividerAlpha60 = Color(0x991C2A3A); // divider @ 0.60
+  static const Color dividerAlpha50 = Color(0x801C2A3A); // divider @ 0.50
+  static const Color errorAlpha10 = Color(0x1AE5503E); // error @ 0.10
+  static const Color textSecondaryAlpha80 = Color(0xCC9EACBD); // textSecondary @ 0.80
+  static const Color bgTransparent = Color(0x00060B11); // background @ 0.0
+  static const Color black32 = Color(0x52000000); // black @ 0.32
+  static const Color black28 = Color(0x47000000); // black @ 0.28
+  static const Color black18 = Color(0x2E000000); // black @ 0.18
   // ── Helpers ────────────────────────────────────────────────────────
   static LinearGradient get cardGradient => const LinearGradient(
         begin: Alignment.topLeft,
@@ -47,10 +85,74 @@ class AppColors {
         end: Alignment.bottomCenter,
         colors: [surface, background],
       );
+
+  /// Fade-out gradient used at the bottom of scrollable areas.
+  static const LinearGradient footerFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [bgTransparent, background],
+    stops: [0.0, 0.3],
+  );
+
+  /// Shared nav-bar decoration (glass).
+  static const BoxDecoration navBarDecoration = BoxDecoration(
+    color: surfaceAlpha85,
+    border: Border(
+      top: BorderSide(color: dividerAlpha60, width: 0.5),
+    ),
+  );
 }
 
 class AppTheme {
   AppTheme._();
+
+  /// Shared MarkdownStyleSheet for answer/response views.
+  static final MarkdownStyleSheet markdownStyle = MarkdownStyleSheet(
+    p: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 15,
+      height: 1.65,
+    ),
+    strong: const TextStyle(
+      color: AppColors.gold,
+      fontWeight: FontWeight.w700,
+    ),
+    h1: const TextStyle(
+      color: AppColors.gold,
+      fontSize: 20,
+      fontWeight: FontWeight.w700,
+    ),
+    h2: const TextStyle(
+      color: AppColors.gold,
+      fontSize: 17,
+      fontWeight: FontWeight.w700,
+    ),
+    blockquoteDecoration: BoxDecoration(
+      color: AppColors.card,
+      borderRadius: BorderRadius.circular(10),
+      border: const Border(
+        left: BorderSide(color: AppColors.gold, width: 3),
+      ),
+    ),
+    blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+    codeblockDecoration: BoxDecoration(
+      color: AppColors.surfaceLight,
+      borderRadius: BorderRadius.circular(10),
+    ),
+  );
+
+  /// Compact MarkdownStyleSheet for inline previews (smaller font).
+  static final MarkdownStyleSheet markdownCompactStyle = MarkdownStyleSheet(
+    p: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 13,
+      height: 1.5,
+    ),
+    strong: const TextStyle(
+      color: AppColors.gold,
+      fontWeight: FontWeight.bold,
+    ),
+  );
 
   static ThemeData get darkTheme {
     final base = ThemeData.dark(useMaterial3: true);

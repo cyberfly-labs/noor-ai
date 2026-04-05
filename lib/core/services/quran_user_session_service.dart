@@ -72,15 +72,11 @@ class QuranUserAuthConfig {
   }
 
   String get oauthBaseUrl {
-    return environment == QuranUserEnvironment.prelive
-        ? 'https://prelive-oauth2.quran.foundation'
-        : 'https://oauth2.quran.foundation';
+    return 'https://oauth2.quran.foundation';
   }
 
   String get userApiBaseUrl {
-    return environment == QuranUserEnvironment.prelive
-        ? 'https://apis-prelive.quran.foundation/auth/v1'
-        : 'https://apis.quran.foundation/auth/v1';
+    return 'https://apis.quran.foundation/auth/v1';
   }
 
   String get environmentLabel {
@@ -176,6 +172,7 @@ class QuranUserSessionService extends ChangeNotifier {
 
     _prefs = await SharedPreferences.getInstance();
     _config = _loadConfig();
+    await _migrateLegacyOAuthEnvironment();
     _session = await _loadSession();
     _appLinks = AppLinks();
 
@@ -386,13 +383,9 @@ class QuranUserSessionService extends ChangeNotifier {
 
   QuranUserAuthConfig _loadConfig() {
     final prefs = _prefs!;
-    final environment = switch (prefs.getString(_configEnvironmentKey)) {
-      'production' => QuranUserEnvironment.production,
-      _ => QuranUserEnvironment.prelive,
-    };
 
     return QuranUserAuthConfig.defaults().copyWith(
-      environment: environment,
+      environment: QuranUserEnvironment.production,
       redirectUri: prefs.getString(_configRedirectUriKey) ??
           QuranUserAuthConfig.defaultRedirectUri,
       scope: prefs.getString(_configScopeKey) ??
@@ -404,6 +397,17 @@ class QuranUserSessionService extends ChangeNotifier {
         prefs.getString(_configProductionClientIdKey),
       ),
     );
+  }
+
+  Future<void> _migrateLegacyOAuthEnvironment() async {
+    final prefs = _prefs!;
+    final savedEnvironment = prefs.getString(_configEnvironmentKey);
+    if (savedEnvironment == 'production') {
+      return;
+    }
+
+    _config = _config.copyWith(environment: QuranUserEnvironment.production);
+    await prefs.setString(_configEnvironmentKey, 'production');
   }
 
   Future<QuranUserSession?> _loadSession() async {

@@ -83,7 +83,7 @@ class _VerseDetailPageState extends State<VerseDetailPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.1),
+                          color: AppColors.gold10,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(

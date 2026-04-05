@@ -113,9 +113,9 @@ class _PostsFeedPageState extends State<PostsFeedPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.gold.withValues(alpha: 0.08),
+                        color: AppColors.gold08,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+                        border: Border.all(color: AppColors.gold15),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -231,8 +231,8 @@ class _PostsFeedPageState extends State<PostsFeedPage> {
               height: 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.gold.withValues(alpha: 0.06),
-                border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+                color: AppColors.gold06,
+                border: Border.all(color: AppColors.gold15),
               ),
               child: const Icon(Icons.article_outlined, size: 32, color: AppColors.gold),
             ),
@@ -268,8 +268,8 @@ class _PostsFeedPageState extends State<PostsFeedPage> {
               height: 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.gold.withValues(alpha: 0.06),
-                border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+                color: AppColors.gold06,
+                border: Border.all(color: AppColors.gold15),
               ),
               child: const Icon(Icons.lock_outline_rounded, size: 32, color: AppColors.gold),
             ),
@@ -341,7 +341,7 @@ class _PostCard extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.gold.withValues(alpha: 0.1),
+                  color: AppColors.gold10,
                 ),
                 child: const Icon(Icons.auto_awesome_rounded, size: 13, color: AppColors.gold),
               ),
@@ -393,9 +393,9 @@ class _PostCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.08),
+                  color: AppColors.gold08,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.gold.withValues(alpha: 0.18)),
+                  border: Border.all(color: AppColors.gold18),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

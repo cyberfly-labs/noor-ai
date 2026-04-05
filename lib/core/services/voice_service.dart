@@ -30,7 +30,8 @@ class VoiceService {
   static final VoiceService instance = VoiceService._();
 
   static const String _ttsGainPreferenceKey = 'voice_service_tts_gain';
-  static const String _playbackVolumePreferenceKey = 'voice_service_playback_volume';
+  static const String _playbackVolumePreferenceKey =
+      'voice_service_playback_volume';
   static const String _ttsVoicePreferenceKey = 'voice_service_tts_voice';
   static const String _defaultTtsVoiceId = 'F1';
   static const double _defaultTtsGain = 1.8;
@@ -92,6 +93,8 @@ class VoiceService {
   double get ttsGain => _ttsGain;
   double get playbackVolume => _playbackVolume;
   String get ttsVoiceId => _ttsVoiceId;
+  Stream<Amplitude> onAmplitudeChanged(Duration interval) =>
+      _recorder.onAmplitudeChanged(interval);
   List<TtsVoiceOption> get supportedTtsVoices =>
       List<TtsVoiceOption>.unmodifiable(_supportedTtsVoices);
 
@@ -140,7 +143,9 @@ class VoiceService {
     await initializeAudioSettings();
     await ModelManager.instance.initialize();
 
-    final voiceDir = Directory('${ModelManager.instance.modelPath(ModelType.tts)}/voice_styles');
+    final voiceDir = Directory(
+      '${ModelManager.instance.modelPath(ModelType.tts)}/voice_styles',
+    );
     if (!await voiceDir.exists()) {
       return const <TtsVoiceOption>[
         TtsVoiceOption(
@@ -214,8 +219,9 @@ class VoiceService {
 
     try {
       await ModelManager.instance.initialize();
-      final isDownloaded =
-          await ModelManager.instance.isModelDownloaded(ModelType.asr);
+      final isDownloaded = await ModelManager.instance.isModelDownloaded(
+        ModelType.asr,
+      );
       if (!isDownloaded) {
         debugPrint('VoiceService: ASR model not downloaded');
         return false;
@@ -252,8 +258,9 @@ class VoiceService {
 
     try {
       await ModelManager.instance.initialize();
-      final isDownloaded =
-          await ModelManager.instance.isModelDownloaded(ModelType.tts);
+      final isDownloaded = await ModelManager.instance.isModelDownloaded(
+        ModelType.tts,
+      );
       if (!isDownloaded) {
         debugPrint('VoiceService: TTS model not downloaded');
         return false;
@@ -341,7 +348,9 @@ class VoiceService {
 
     debugPrint('VoiceService: Transcribing $audioPath');
     final buffer = StringBuffer();
-    await for (final partial in NativeBridge.instance.transcribeAudioStream(audioPath)) {
+    await for (final partial in NativeBridge.instance.transcribeAudioStream(
+      audioPath,
+    )) {
       buffer
         ..clear()
         ..write(partial);
@@ -371,7 +380,9 @@ class VoiceService {
       final wav = _cachedFirstChunkWav;
       _cachedFirstChunkText = null;
       _cachedFirstChunkWav = null;
-      debugPrint('VoiceService: cache hit for first chunk (${text.length} chars)');
+      debugPrint(
+        'VoiceService: cache hit for first chunk (${text.length} chars)',
+      );
       return wav;
     }
 
@@ -405,7 +416,9 @@ class VoiceService {
       if (wavPath != null) {
         _cachedFirstChunkText = firstChunk;
         _cachedFirstChunkWav = wavPath;
-        debugPrint('VoiceService: pre-synthesized first chunk (${firstChunk.length} chars)');
+        debugPrint(
+          'VoiceService: pre-synthesized first chunk (${firstChunk.length} chars)',
+        );
       }
     }();
   }
@@ -425,7 +438,9 @@ class VoiceService {
     if (!_ttsReady) {
       final ready = await initTts();
       if (!ready || sessionId != _playbackSessionId) {
-        debugPrint('VoiceService: Skipping TTS playback because initialization failed');
+        debugPrint(
+          'VoiceService: Skipping TTS playback because initialization failed',
+        );
         return;
       }
     }
@@ -592,31 +607,28 @@ class VoiceService {
         // Strip inline code (`code`)
         .replaceAll(RegExp(r'`+[^`]*`+'), '')
         // Strip markdown links [text](url) -> text
-        .replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^)]*\)'), (m) => m.group(1) ?? '')
+        .replaceAllMapped(
+          RegExp(r'\[([^\]]+)\]\([^)]*\)'),
+          (m) => m.group(1) ?? '',
+        )
         // Strip bare URLs
         .replaceAll(RegExp(r'https?://\S+'), '')
         // Strip markdown blockquotes (> )
-        .replaceAllMapped(
-          RegExp(r'(^|\n)\s*>\s*'),
-          (m) => m.group(1) ?? '',
-        )
+        .replaceAllMapped(RegExp(r'(^|\n)\s*>\s*'), (m) => m.group(1) ?? '')
         // Strip horizontal rules (---, ***, ___)
         .replaceAllMapped(
           RegExp(r'(^|\n)\s*[-*_]{3,}\s*(\n|$)'),
           (m) => m.group(1) ?? '',
         )
         // Strip numbered list markers (1. 2. etc.)
-        .replaceAllMapped(
-          RegExp(r'(^|\n)\s*\d+\.\s*'),
-          (m) => m.group(1) ?? '',
-        )
+        .replaceAllMapped(RegExp(r'(^|\n)\s*\d+\.\s*'), (m) => m.group(1) ?? '')
         // Strip bullet list markers (- / * / +)
-        .replaceAllMapped(
-          RegExp(r'(^|\n)\s*[-*+]\s+'),
-          (m) => m.group(1) ?? '',
-        )
+        .replaceAllMapped(RegExp(r'(^|\n)\s*[-*+]\s+'), (m) => m.group(1) ?? '')
         // Strip [QURAN], [TAFSIR], [HADITH] block labels
-        .replaceAll(RegExp(r'\[(QURAN|TAFSIR|HADITH)\]\s*', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(r'\[(QURAN|TAFSIR|HADITH)\]\s*', caseSensitive: false),
+          '',
+        )
         // Collapse whitespace
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
@@ -664,7 +676,8 @@ class VoiceService {
       }
 
       final separator = buffer.isEmpty ? '' : ' ';
-      final candidateLength = buffer.length + separator.length + sentence.length;
+      final candidateLength =
+          buffer.length + separator.length + sentence.length;
       if (candidateLength > _maxTtsChunkLength && buffer.isNotEmpty) {
         flush();
       }
@@ -845,9 +858,7 @@ class VoiceService {
     // would immediately match that stale "completed" and return early.
     // Waiting for playing==true first prevents that race condition.
     final started = await _player.playerStateStream
-        .firstWhere(
-          (s) => sessionId != _playbackSessionId || s.playing,
-        )
+        .firstWhere((s) => sessionId != _playbackSessionId || s.playing)
         .timeout(
           const Duration(seconds: 5),
           onTimeout: () => _player.playerState,
@@ -865,9 +876,7 @@ class VoiceService {
     // Timeout of 120 s is a true safety net — the longest expected TTS chunk
     // is ~220 chars ≈ 18 s of audio, so 120 s gives 6× headroom.
     await _player.playerStateStream
-        .firstWhere(
-          (s) => sessionId != _playbackSessionId || !s.playing,
-        )
+        .firstWhere((s) => sessionId != _playbackSessionId || !s.playing)
         .timeout(
           const Duration(seconds: 120),
           onTimeout: () {
