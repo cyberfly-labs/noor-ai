@@ -11,7 +11,7 @@ services:
       - key: NODE_VERSION
         value: 20
       - key: QF_USE_PRELIVE
-        value: "true"
+        value: "false"
       - key: QF_CLIENT_ID
         sync: false
       - key: QF_CLIENT_SECRET

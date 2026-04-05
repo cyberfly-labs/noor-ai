@@ -21,7 +21,7 @@ Voice Input → ASR (Whisper) → Intent Detection → API Fetch → LLM (Qwen3.
 | LLM | Qwen3.5-0.8B-MNN |
 | Embeddings | bge-small-en-v1.5-mnn |
 | Quran Content API | Quran Foundation via Node backend |
-| Quran User API | Quran Foundation OAuth + User APIs |
+| Quran User API | Quran Foundation OAuth via backend token exchange + User APIs |
 | Local DB | SQLite (sqflite) |
 | Vector Store | In-memory cosine similarity |
 
@@ -101,7 +101,7 @@ cd ..
 flutter pub get
 
 # Run on device (debug)
-flutter run --dart-define=QURAN_API_PROVIDER=quranfoundation --dart-define=QF_BACKEND_BASE_URL=http://YOUR_MACHINE_IP:8787 --dart-define=QF_USE_PRELIVE=true
+flutter run --dart-define=QURAN_API_PROVIDER=quranfoundation --dart-define=QF_BACKEND_BASE_URL=http://YOUR_MACHINE_IP:8787 --dart-define=QF_USE_PRELIVE=false
 
 # Build release APK
 flutter build apk --release --target-platform android-arm64
@@ -113,7 +113,7 @@ This repo includes a Render blueprint at `render.yaml` for the Quran Foundation 
 
 1. Create a new Web Service from the repository using the Render blueprint.
 2. Set `QF_CLIENT_ID` and `QF_CLIENT_SECRET` in the Render dashboard.
-3. Keep `QF_USE_PRELIVE=true` for pre-production, or set it to `false` for production.
+3. Keep `QF_USE_PRELIVE=false` for production, or set it to `true` only when you have matching pre-production OAuth credentials.
 4. After deploy, use the Render service URL as `QF_BACKEND_BASE_URL` in Flutter.
 
 Example Flutter run command against Render:
@@ -122,7 +122,7 @@ Example Flutter run command against Render:
 flutter run \
     --dart-define=QURAN_API_PROVIDER=quranfoundation \
     --dart-define=QF_BACKEND_BASE_URL=https://your-render-service.onrender.com \
-    --dart-define=QF_USE_PRELIVE=true
+    --dart-define=QF_USE_PRELIVE=false
 ```
 
 ### AI Models
@@ -193,10 +193,12 @@ CMake is wired via `android/app/build.gradle.kts` → `native/cpp/CMakeLists.txt
 
 Content APIs are served through the local Node backend, which exchanges the Quran Foundation client secret server-side and proxies the responses to Flutter.
 
-User APIs remain direct from the app using Quran Foundation OAuth PKCE for login and the returned user access token for bookmarks and streak tracking.
+User login still starts in the app with Quran Foundation OAuth PKCE, but authorization-code exchange and refresh now go through the Node backend because the current OAuth client is confidential.
 
 The backend exposes:
 
+- `POST /api/qf/auth/exchange`
+- `POST /api/qf/auth/refresh`
 - `GET /api/qf/resources/tafsirs`
 - `GET /api/qf/resources/translations`
 - `GET /api/qf/resources/recitations`

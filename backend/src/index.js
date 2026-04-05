@@ -35,6 +35,45 @@ const searchBaseUrl = usePrelive
 let cachedToken = null;
 let cachedTokenExpiresAt = 0;
 
+function oauthHeaders() {
+  return {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+  };
+}
+
+async function exchangeUserToken(params) {
+  const response = await axios.post(
+    `${oauthBaseUrl}/oauth2/token`,
+    new URLSearchParams(params).toString(),
+    {
+      auth: {
+        username: clientId,
+        password: clientSecret,
+      },
+      headers: oauthHeaders(),
+      timeout: 15000,
+      validateStatus: (status) => status != null && status < 500,
+    },
+  );
+
+  if (response.status >= 400 || !response.data || !response.data.access_token) {
+    const error = new Error('Quran Foundation user token request failed');
+    error.status = response.status;
+    error.payload = response.data;
+    throw error;
+  }
+
+  return {
+    access_token: response.data.access_token,
+    refresh_token: response.data.refresh_token,
+    id_token: response.data.id_token,
+    token_type: response.data.token_type,
+    expires_in: response.data.expires_in,
+    scope: response.data.scope,
+  };
+}
+
 async function getServiceToken() {
   const now = Date.now();
   if (cachedToken && now < cachedTokenExpiresAt) {
@@ -52,10 +91,7 @@ async function getServiceToken() {
         username: clientId,
         password: clientSecret,
       },
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
+      headers: oauthHeaders(),
       timeout: 15000,
       validateStatus: (status) => status != null && status < 500,
     },
@@ -124,6 +160,40 @@ app.get('/health', (_req, res) => {
     prelive: usePrelive,
   });
 });
+
+app.post('/api/qf/auth/exchange', asyncRoute(async (req) => {
+  const code = String(req.body?.code || '').trim();
+  const codeVerifier = String(req.body?.codeVerifier || '').trim();
+  const redirectUri = String(req.body?.redirectUri || '').trim();
+
+  if (!code || !codeVerifier || !redirectUri) {
+    const error = new Error('Missing code, codeVerifier, or redirectUri');
+    error.status = 400;
+    throw error;
+  }
+
+  return exchangeUserToken({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  });
+}));
+
+app.post('/api/qf/auth/refresh', asyncRoute(async (req) => {
+  const refreshToken = String(req.body?.refreshToken || '').trim();
+
+  if (!refreshToken) {
+    const error = new Error('Missing refreshToken');
+    error.status = 400;
+    throw error;
+  }
+
+  return exchangeUserToken({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+  });
+}));
 
 app.get('/api/qf/resources/tafsirs', asyncRoute((req) =>
   qfGet(contentBaseUrl, '/resources/tafsirs', req.query)));
