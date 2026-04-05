@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/models/reading_goal.dart';
 import '../../../core/services/daily_notification_service.dart';
+import '../../../core/services/llm_service.dart';
 import '../../../core/services/model_manager.dart';
 import '../../../core/services/quran_api_config_service.dart';
 import '../../../core/services/quran_user_session_service.dart';
@@ -220,6 +221,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await mm.completeOnboarding();
       await _progressSubscription?.cancel();
       await _loadAudioSettings();
+      unawaited(LlmService.instance.initialize());
 
       if (mounted) {
         setState(() {

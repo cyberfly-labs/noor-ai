@@ -24,7 +24,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
   final TextEditingController _questionController = TextEditingController();
   bool _hasQuestionInput = false;
   late final Future<List<Surah>> _surahsFuture;
-  Future<List<Verse>>? _searchResultsFuture;
+  Future<QuranVerseSearchResult>? _searchResultsFuture;
   Timer? _searchDebounce;
   String _activeSearchQuery = '';
   final QuranRagService _quranRag = QuranRagService.instance;
@@ -338,7 +338,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
   }
 
   Widget _buildSearchResults() {
-    return FutureBuilder<List<Verse>>(
+    return FutureBuilder<QuranVerseSearchResult>(
       future: _searchResultsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -347,7 +347,8 @@ class _QuranPageState extends ConsumerState<QuranPage> {
           );
         }
 
-        final results = snapshot.data ?? const <Verse>[];
+        final searchResult = snapshot.data ?? const QuranVerseSearchResult.empty();
+        final results = searchResult.verses;
         final hasSurahMatches = _matchingSurahs.isNotEmpty;
         if (!hasSurahMatches && results.isEmpty) {
           return Center(
@@ -365,6 +366,10 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textMuted),
                 ),
+                if (snapshot.hasData) ...[
+                  const SizedBox(height: 10),
+                  _SearchBackendChip(label: searchResult.debugLabel),
+                ],
               ],
             ),
           );
@@ -399,6 +404,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
               _SearchSectionHeader(
                 title: 'Matching verses',
                 countLabel: '${results.length}',
+                debugLabel: searchResult.debugLabel,
               ),
               const SizedBox(height: 10),
               ...results.map(
@@ -702,7 +708,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
       }
 
       setState(() {
-        _searchResultsFuture = _quranRag.searchVerses(trimmed);
+        _searchResultsFuture = _quranRag.searchVersesDetailed(trimmed);
       });
     });
   }
@@ -779,10 +785,15 @@ class _QuranPageState extends ConsumerState<QuranPage> {
 }
 
 class _SearchSectionHeader extends StatelessWidget {
-  const _SearchSectionHeader({required this.title, required this.countLabel});
+  const _SearchSectionHeader({
+    required this.title,
+    required this.countLabel,
+    this.debugLabel,
+  });
 
   final String title;
   final String countLabel;
+  final String? debugLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -810,7 +821,37 @@ class _SearchSectionHeader extends StatelessWidget {
             ),
           ),
         ),
+        if (debugLabel != null) ...[
+          const SizedBox(width: 8),
+          _SearchBackendChip(label: debugLabel!),
+        ],
       ],
+    );
+  }
+}
+
+class _SearchBackendChip extends StatelessWidget {
+  const _SearchBackendChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.textMuted.withValues(alpha: 0.16)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

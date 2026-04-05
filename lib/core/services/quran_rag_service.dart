@@ -25,6 +25,51 @@ typedef QuranVerseTextLoader = Future<String?> Function(
   int ayahNumber,
 );
 
+typedef QuranVectorBackendReader = VectorSearchBackend Function();
+
+enum QuranVerseSearchBackend {
+  zvec,
+  inMemoryVectors,
+  localDb,
+  unknown,
+}
+
+extension QuranVerseSearchBackendLabel on QuranVerseSearchBackend {
+  String get debugLabel {
+    switch (this) {
+      case QuranVerseSearchBackend.zvec:
+        return 'zvec';
+      case QuranVerseSearchBackend.inMemoryVectors:
+        return 'in-memory';
+      case QuranVerseSearchBackend.localDb:
+        return 'local DB';
+      case QuranVerseSearchBackend.unknown:
+        return 'unknown';
+    }
+  }
+}
+
+class QuranVerseSearchResult {
+  const QuranVerseSearchResult({
+    required this.verses,
+    required this.backend,
+    this.isExactVerseMatch = false,
+  });
+
+  const QuranVerseSearchResult.empty()
+      : verses = const <Verse>[],
+        backend = QuranVerseSearchBackend.unknown,
+        isExactVerseMatch = false;
+
+  final List<Verse> verses;
+  final QuranVerseSearchBackend backend;
+  final bool isExactVerseMatch;
+
+  String get debugLabel => isExactVerseMatch
+      ? '${backend.debugLabel} exact'
+      : backend.debugLabel;
+}
+
 class QuranRagEvidence {
   const QuranRagEvidence({
     required this.verseKey,
@@ -90,13 +135,19 @@ class QuranRagService {
     QuranSurahVersesLoader? loadSurahVerses,
     QuranVerseTextLoader? loadVerseTafsir,
     QuranVerseTextLoader? loadVerseTafsirSource,
+    QuranVectorBackendReader? currentVectorBackend,
+    QuranVectorBackendReader? currentDocumentBackend,
   })  : _queryVectors = queryVectors ?? VectorStoreService.instance.queryByText,
         _searchDocument = searchDocument ?? VectorStoreService.instance.searchInDocument,
         _lexicalSearch = lexicalSearch ?? QuranApiService.instance.search,
         _loadSurahVerses = loadSurahVerses ?? QuranApiService.instance.getSurahVerses,
         _loadVerseTafsir = loadVerseTafsir ?? QuranApiService.instance.getVerseTafsir,
         _loadVerseTafsirSource =
-            loadVerseTafsirSource ?? QuranApiService.instance.getVerseTafsirSource;
+            loadVerseTafsirSource ?? QuranApiService.instance.getVerseTafsirSource,
+        _currentVectorBackend =
+            currentVectorBackend ?? (() => VectorStoreService.instance.lastQueryBackend),
+        _currentDocumentBackend = currentDocumentBackend ??
+            (() => VectorStoreService.instance.lastDocumentQueryBackend);
 
   static final QuranRagService instance = QuranRagService();
 
@@ -224,15 +275,29 @@ class QuranRagService {
   final QuranSurahVersesLoader _loadSurahVerses;
   final QuranVerseTextLoader _loadVerseTafsir;
   final QuranVerseTextLoader _loadVerseTafsirSource;
-    final Map<String, List<_RankedQuranHit>> _rankedHitsCache =
+  final QuranVectorBackendReader _currentVectorBackend;
+  final QuranVectorBackendReader _currentDocumentBackend;
+  final Map<String, List<_RankedQuranHit>> _rankedHitsCache =
       <String, List<_RankedQuranHit>>{};
-    final Map<String, QuranRagContent> _entryContentCache =
+  final Map<String, QuranRagContent> _entryContentCache =
       <String, QuranRagContent>{};
-    final Map<String, Set<String>> _tokenCache = <String, Set<String>>{};
-    static const int _maxRankedHitsCacheEntries = 80;
-    static const int _maxTextCacheEntries = 240;
+  final Map<String, Set<String>> _tokenCache = <String, Set<String>>{};
+  static const int _maxRankedHitsCacheEntries = 80;
+  static const int _maxTextCacheEntries = 240;
 
   Future<QuranRagEvidence?> retrieveVerseEvidence(
+    String verseKey, {
+    String? queryHint,
+  }) async {
+    final result = await _retrieveVerseEvidenceWithSource(
+      verseKey,
+      queryHint: queryHint,
+    );
+    return result?.evidence;
+  }
+
+  Future<({QuranRagEvidence evidence, QuranVerseSearchBackend backend})?>
+      _retrieveVerseEvidenceWithSource(
     String verseKey, {
     String? queryHint,
   }) async {
@@ -251,11 +316,14 @@ class QuranRagService {
       final result = results.first;
       final content = parseEntryContent(result.entry.content);
       if (content.translationText.isNotEmpty || content.tafsirText.isNotEmpty) {
-        return QuranRagEvidence(
-          verseKey: normalizedVerseKey,
-          translationText: content.translationText,
-          tafsirText: content.tafsirText,
-          tafsirSource: result.entry.metadata['source'] ?? 'Local English Tafsir',
+        return (
+          evidence: QuranRagEvidence(
+            verseKey: normalizedVerseKey,
+            translationText: content.translationText,
+            tafsirText: content.tafsirText,
+            tafsirSource: result.entry.metadata['source'] ?? 'Local English Tafsir',
+          ),
+          backend: _mapVectorBackend(_currentDocumentBackend()),
         );
       }
     }
@@ -273,11 +341,14 @@ class QuranRagService {
       final best = exactVerseHits.first;
       final content = parseEntryContent(best.entry.content);
       if (content.translationText.isNotEmpty || content.tafsirText.isNotEmpty) {
-        return QuranRagEvidence(
-          verseKey: normalizedVerseKey,
-          translationText: content.translationText,
-          tafsirText: content.tafsirText,
-          tafsirSource: best.entry.metadata['source'] ?? 'Local English Tafsir',
+        return (
+          evidence: QuranRagEvidence(
+            verseKey: normalizedVerseKey,
+            translationText: content.translationText,
+            tafsirText: content.tafsirText,
+            tafsirSource: best.entry.metadata['source'] ?? 'Local English Tafsir',
+          ),
+          backend: _mapVectorBackend(_currentVectorBackend()),
         );
       }
     }
@@ -307,11 +378,14 @@ class QuranRagService {
       return null;
     }
 
-    return QuranRagEvidence(
-      verseKey: normalizedVerseKey,
-      translationText: translation,
-      tafsirText: tafsir,
-      tafsirSource: source,
+    return (
+      evidence: QuranRagEvidence(
+        verseKey: normalizedVerseKey,
+        translationText: translation,
+        tafsirText: tafsir,
+        tafsirSource: source,
+      ),
+      backend: QuranVerseSearchBackend.localDb,
     );
   }
 
@@ -412,21 +486,36 @@ class QuranRagService {
     String rawQuery, {
     int limit = 8,
   }) async {
+    final result = await searchVersesDetailed(rawQuery, limit: limit);
+    return result.verses;
+  }
+
+  Future<QuranVerseSearchResult> searchVersesDetailed(
+    String rawQuery, {
+    int limit = 8,
+  }) async {
     final query = rawQuery.trim();
     if (query.isEmpty) {
-      return const <Verse>[];
+      return const QuranVerseSearchResult.empty();
     }
 
-    final exactVerse = await _lookupExactVerse(query);
+    final exactVerse = await _lookupExactVerseWithSource(query);
     if (exactVerse != null) {
-      return <Verse>[exactVerse];
+      return QuranVerseSearchResult(
+        verses: <Verse>[exactVerse.verse],
+        backend: exactVerse.backend,
+        isExactVerseMatch: true,
+      );
     }
 
     final rankedHits = _retrieveRankedHits(rawQuery, limit: limit);
 
-    return _hydrateVerses(
-      rankedHits.map((hit) => hit.result).toList(growable: false),
-      limit: limit,
+    return QuranVerseSearchResult(
+      verses: await _hydrateVerses(
+        rankedHits.map((hit) => hit.result).toList(growable: false),
+        limit: limit,
+      ),
+      backend: _mapVectorBackend(_currentVectorBackend()),
     );
   }
 
@@ -841,6 +930,17 @@ class QuranRagService {
   bool _isHadithCorpusEntry(VectorEntry entry) =>
       entry.metadata['kind'] == 'hadith_corpus';
 
+  QuranVerseSearchBackend _mapVectorBackend(VectorSearchBackend backend) {
+    switch (backend) {
+      case VectorSearchBackend.nativeZvec:
+        return QuranVerseSearchBackend.zvec;
+      case VectorSearchBackend.inMemory:
+        return QuranVerseSearchBackend.inMemoryVectors;
+      case VectorSearchBackend.unknown:
+        return QuranVerseSearchBackend.unknown;
+    }
+  }
+
   static bool _isSahihGrade(String grade) {
     final lower = grade.toLowerCase();
     return lower.contains('sahih') || lower.contains('hasan');
@@ -892,23 +992,27 @@ class QuranRagService {
     return evidence;
   }
 
-  Future<Verse?> _lookupExactVerse(String query) async {
-    final evidence = await retrieveVerseEvidence(query, queryHint: query);
-    if (evidence == null) {
+  Future<({Verse verse, QuranVerseSearchBackend backend})?>
+      _lookupExactVerseWithSource(String query) async {
+    final result = await _retrieveVerseEvidenceWithSource(query, queryHint: query);
+    if (result == null) {
       return null;
     }
-    final match = _verseKeyPattern.firstMatch(evidence.verseKey);
+    final match = _verseKeyPattern.firstMatch(result.evidence.verseKey);
     if (match == null) {
       return null;
     }
 
     final surahNumber = int.parse(match.group(1)!);
     final ayahNumber = int.parse(match.group(2)!);
-    return Verse(
-      verseKey: evidence.verseKey,
-      surahNumber: surahNumber,
-      ayahNumber: ayahNumber,
-      translationText: evidence.translationText,
+    return (
+      verse: Verse(
+        verseKey: result.evidence.verseKey,
+        surahNumber: surahNumber,
+        ayahNumber: ayahNumber,
+        translationText: result.evidence.translationText,
+      ),
+      backend: result.backend,
     );
   }
 

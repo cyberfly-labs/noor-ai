@@ -20,23 +20,35 @@ class EmbeddingService {
   static const int dimension = 384;
 
   Future<bool> initialize() async {
-    if (_initialized) return true;
-
     await ModelManager.instance.initialize();
     await ModelManager.instance.ensureRuntimeReady(ModelType.embedding);
 
     final hasEmbeddingModel =
         await ModelManager.instance.isModelDownloaded(ModelType.embedding);
-    if (!hasEmbeddingModel || !NativeBridge.instance.isAvailable) {
-      _initialized = true;
-      debugPrint('EmbeddingService: Ready (placeholder mode)');
+    final nextModelPath = hasEmbeddingModel && NativeBridge.instance.isAvailable
+        ? ModelManager.instance.modelPath(ModelType.embedding)
+        : '';
+    final nextNativeAvailability = nextModelPath.isNotEmpty;
+
+    final alreadyConfigured =
+        _initialized &&
+        _nativeEmbeddingAvailable == nextNativeAvailability &&
+        _embeddingModelPath == nextModelPath;
+    if (alreadyConfigured) {
       return true;
     }
 
     try {
-      _embeddingModelPath = ModelManager.instance.modelPath(ModelType.embedding);
-      _nativeEmbeddingAvailable = _embeddingModelPath.isNotEmpty;
+      final modeChanged =
+          _nativeEmbeddingAvailable != nextNativeAvailability ||
+          _embeddingModelPath != nextModelPath;
+      _embeddingModelPath = nextModelPath;
+      _nativeEmbeddingAvailable = nextNativeAvailability;
       _initialized = true;
+      if (modeChanged) {
+        _queryCache.clear();
+        _documentCache.clear();
+      }
       debugPrint(
         'EmbeddingService: Ready '
         '(${_nativeEmbeddingAvailable ? "native" : "placeholder"})',
@@ -81,7 +93,7 @@ class EmbeddingService {
       }
       debugPrint('EmbeddingService: Native embedding failed, using placeholder');
     }
-    
+
     // Development placeholder: deterministic pseudo-embedding based on text hash
     final hash = normalizedText.hashCode;
     final fallback = List.generate(dimension, (i) {

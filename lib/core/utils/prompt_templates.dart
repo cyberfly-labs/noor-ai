@@ -28,7 +28,9 @@ class PromptTemplates {
     final tafsirBlock = tafsirText != null && tafsirText.isNotEmpty
         ? '\n[TAFSIR]\nSource: $sourceLabel\nText: $tafsirText'
         : '';
-    final arabicBlock = arabicText.isNotEmpty ? '\n[QURAN]\nText (Arabic): $arabicText\nTranslation: $translationText' : '\n[QURAN]\nTranslation: $translationText';
+    final arabicBlock = arabicText.isNotEmpty
+        ? '\n[QURAN]\nText (Arabic): $arabicText\nTranslation: $translationText'
+        : '\n[QURAN]\nTranslation: $translationText';
 
     return '''$_noorIdentity
 
@@ -37,19 +39,18 @@ $verseKey
 $arabicBlock$tafsirBlock
 
 Rules:
-- Cite the verse reference.
+- The Quran quote is shown separately in the UI, so do not repeat the full translation.
+- Cite $verseKey once.
 - Attribute tafsir points to $sourceLabel.
 - Do not add outside knowledge or rulings.
 - Every sentence must be directly supported by the supplied Quran verse or tafsir text.
 - Keep the explanation compact and avoid repeating any word, phrase, sentence, or idea.
 - If the source does not address something, say so.
+- Keep the total answer under 90 words.
 
 Structure your response EXACTLY as:
-📖 Quran:
-[Quote the verse and reference.]
-
 📚 Explanation:
-[Grounded explanation in 4-6 sentences. Each sentence must add new information.]
+[3-4 short grounded sentences.]
 
 ✨ Summary:
 [1 short takeaway sentence.]
@@ -135,6 +136,7 @@ $evidenceText
 
 Rules:
 - Use ONLY the supplied [QURAN] and [TAFSIR] blocks — no outside knowledge.
+- The Quran quote is shown separately in the UI, so do not repeat long verse quotations.
 - Attribute tafsir points to the retrieved source.
 - This is a partial sample — never claim to cover the entire surah.
 - Cite verse references when making specific points.
@@ -142,18 +144,16 @@ Rules:
 - Do not give fatwas or speculate.
 - If the evidence is insufficient, say: "I could not find this in the provided Quran or Tafsir المصادر."
 - Match the user's language.
+- Keep the total answer under 140 words.
 
 Structure your response EXACTLY as:
-📖 Quran:
-[Quote 1 key retrieved verse with its reference.]
-
 📚 Explanation:
-[Main themes from the evidence in 7-10 sentences.]
+[5-7 short grounded sentences.]
 
 ✨ Summary:
-[1-2 sentence central theme of this surah based on the retrieved evidence.]
+[1 short sentence on the central theme.]
 
-Write 10-14 grounded sentences. Do not repeat.''';
+Do not repeat.''';
   }
 
   /// Emotional guidance based on user's feeling
@@ -163,18 +163,17 @@ Write 10-14 grounded sentences. Do not repeat.''';
     required List<String> verseReferences,
     required List<String> verseTranslations,
   }) {
-    // Pre-fill verse slots so the 0.8B model echoes each translation
-    // rather than selecting only one.
     final slotCount = verseReferences.length.clamp(1, 3);
-    final verseSlots = List.generate(slotCount, (i) {
+    final verseEvidence = List.generate(slotCount, (i) {
       final key = verseReferences[i];
-      final fill = i < verseTranslations.length && verseTranslations[i].isNotEmpty
+      final fill =
+          i < verseTranslations.length && verseTranslations[i].isNotEmpty
           ? '"${verseTranslations[i]}"'
-          : '[copy translation from evidence]';
+          : '[translation unavailable]';
       return '- $key: $fill';
     }).join('\n');
     final explanationSlots = List.generate(slotCount, (i) {
-      return '  - ${verseReferences[i]}: [1-2 warm sentences on how this verse comforts someone feeling $emotion]';
+      return '- ${verseReferences[i]}: [1 short grounded sentence on how this verse comforts someone feeling $emotion]';
     }).join('\n');
 
     return '''$_noorIdentity
@@ -182,28 +181,28 @@ Write 10-14 grounded sentences. Do not repeat.''';
 The user is going through a difficult time. They are experiencing: $emotion
 They said: "$userText"
 
-Respond with genuine warmth and empathy, grounded strictly in the verses below.
+Use ONLY these verses:
+$verseEvidence
 
 Rules:
-- The Quran translations in the \u{1F4D6} section are pre-filled — output them exactly as shown.
+- The Quran quotes are shown separately in the UI, so do not repeat them verbatim.
 - Every comforting point must be grounded in the verses shown.
-- Do NOT skip any verse slot — fill every one.
+- Mention each verse key once in the explanation section.
+- Do not copy any verse text into the Explanation, Comfort, or Summary sections.
 - Do not give fatwas or religious rulings.
 - Match the user's language.
+- Keep the total answer under 120 words.
 
 Structure your response EXACTLY as:
-📖 Quran:
-$verseSlots
-
 📚 Explanation:
-For each verse above, explain how it brings comfort for $emotion:
+[Write only fresh comforting explanation lines in this format; do not quote the verse text.]
 $explanationSlots
 
 🤍 Comfort:
-[2-4 short sentences of reassurance referencing the verse keys above.]
+[2 short grounded sentences of reassurance.]
 
 ✨ Summary:
-[1-2 hopeful sentences directly grounded in the verses above.]
+[1 short hopeful sentence.]
 
 Be compassionate. Do not skip any verse slot.''';
   }
@@ -245,23 +244,15 @@ Write 10-16 sentences. Each sentence must add new information.''';
   }) {
     final evidenceText = evidenceBlocks.join('\n\n');
     final normalizedRetrievalQuery = retrievalQuery.trim();
-    final retrievalQueryBlock = normalizedRetrievalQuery.isNotEmpty &&
+    final retrievalQueryBlock =
+        normalizedRetrievalQuery.isNotEmpty &&
             normalizedRetrievalQuery != question.trim()
         ? 'Retrieval query used to fetch the evidence: "$normalizedRetrievalQuery"\n\n'
         : '';
 
-    // Pre-fill each slot with the actual translation text so the 0.8B model
-    // just echoes it rather than searching across multiple evidence blocks.
     final slotCount = verseReferences.length.clamp(1, 3);
-    final verseSlots = List.generate(slotCount, (i) {
-      final key = verseReferences[i];
-      final fill = i < verseTranslations.length && verseTranslations[i].isNotEmpty
-          ? '"${verseTranslations[i]}"'
-          : '[copy Translation from EVIDENCE ${i + 1}]';
-      return '- $key — $fill';
-    }).join('\n');
     final explanationSlots = List.generate(slotCount, (i) {
-      return '  - ${verseReferences[i]}: [use EVIDENCE ${i + 1} tafsir to answer in 1-2 sentences]';
+      return '- ${verseReferences[i]}: [1 short grounded sentence using the evidence]';
     }).join('\n');
 
     return '''$_noorIdentity
@@ -278,34 +269,29 @@ Rules:
 - Use ONLY the supplied [QURAN] and [TAFSIR] blocks — no outside knowledge.
 - Interpret every piece of evidence in light of the user's question.
 - Every sentence must be directly supported by the retrieved evidence.
-- The Quran translations in the 📖 section are pre-filled — output them exactly as shown.
+- The Quran quotes are shown separately in the UI, so do not repeat long translations verbatim.
 - For each [TAFSIR] block: draw on its insights when writing the 📚 Explanation section.
 - Do NOT skip any verse slot in the structure below — fill every one.
 - Do NOT cite any verse not found in the retrieved evidence above.
 - Do NOT give fatwas, speculate, or add personal opinion.
 - If the evidence does not answer the question, say exactly: "I could not find this in the provided Quran or Tafsir المصادر."
 - Match the user's language.
+- Keep the total answer under 140 words.
 
 Structure your response EXACTLY as:
-📖 Quran:
-$verseSlots
-
 📚 Explanation:
-For each verse above, explain how it answers the question:
 $explanationSlots
 
 🧭 What This Means For Your Question:
-[Answer the user's actual question directly in 2-4 grounded sentences, referencing the verse keys above.]
+[Answer the user's question directly in 2 short grounded sentences, referencing the verse keys above.]
 
 ✨ Summary:
-[1-2 sentence takeaway directly from the evidence.]
+[1 short takeaway sentence directly from the evidence.]
 
 Do not skip any verse slot. Do not repeat sentences.''';
   }
 
-  static String rewriteAsrTranscript({
-    required String transcript,
-  }) {
+  static String rewriteAsrTranscript({required String transcript}) {
     final surahChoices = SurahLookup.promptSurahChoices(transcript: transcript);
 
     return '''You are correcting speech-to-text output for a Quran companion app.
@@ -330,9 +316,7 @@ Task:
 Return only the corrected transcript as a single plain line.''';
   }
 
-  static String normalizeVoiceCommand({
-    required String userInput,
-  }) {
+  static String normalizeVoiceCommand({required String userInput}) {
     final surahChoices = SurahLookup.promptSurahChoices(
       transcript: userInput,
       maxChoices: 10,
@@ -397,9 +381,7 @@ Now process this input:
 $userInput''';
   }
 
-  static String translateTafsirText({
-    required String tafsirText,
-  }) {
+  static String translateTafsirText({required String tafsirText}) {
     return '''You are translating Quran tafsir into clear English.
 
 Source tafsir:

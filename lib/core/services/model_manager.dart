@@ -237,6 +237,12 @@ class ModelManager {
     return states.values.every((isDownloaded) => isDownloaded);
   }
 
+  Future<bool> areRagModelsDownloaded({bool forceRefresh = false}) async {
+    final states = await getDownloadedModelStates(forceRefresh: forceRefresh);
+    return (states[ModelType.llm] ?? false) &&
+        (states[ModelType.embedding] ?? false);
+  }
+
   Future<Map<ModelType, bool>> getDownloadedModelStates({
     bool forceRefresh = false,
   }) async {

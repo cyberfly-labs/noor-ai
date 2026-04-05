@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 import 'native_bridge.dart';
 import 'model_manager.dart';
@@ -43,19 +42,19 @@ class LlmService {
       await ModelManager.instance.initialize();
       await ModelManager.instance.ensureRuntimeReady(ModelType.llm);
 
-      // The native core uses the same zvec path for both LLM and vector store.
-      // On Android, wait for bundled DB restore/init to finish before any LLM
-      // startup touches that collection path.
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await VectorStoreService.instance.initialize();
-      }
-
       final hasLlmModel =
           await ModelManager.instance.isModelDownloaded(ModelType.llm);
       if (!hasLlmModel) {
         debugPrint('LlmService: LLM model not downloaded');
         _initializeFuture = null;
         return false;
+      }
+
+      // The native core uses the same zvec path for both LLM and vector store.
+      // On Android, wait for bundled DB restore/init to finish before any LLM
+      // startup touches that collection path.
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await VectorStoreService.instance.initialize();
       }
 
       final modelDir = ModelManager.instance.modelPath(ModelType.llm);

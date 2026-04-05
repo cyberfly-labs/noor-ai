@@ -13,6 +13,12 @@ import 'native_bridge.dart';
 import '../utils/perf_trace.dart';
 
 /// Vector store backed by native edgemind/zvec on Android, with in-memory fallback.
+enum VectorSearchBackend {
+  nativeZvec,
+  inMemory,
+  unknown,
+}
+
 class VectorStoreService {
   VectorStoreService._();
   static final VectorStoreService instance = VectorStoreService._();
@@ -25,6 +31,9 @@ class VectorStoreService {
   bool _nativeAvailable = false;
   bool _nativeRuntimeInitialized = false;
   Future<void>? _seedDocumentsFuture;
+  Future<void>? _activateNativeFuture;
+  VectorSearchBackend _lastQueryBackend = VectorSearchBackend.unknown;
+  VectorSearchBackend _lastDocumentQueryBackend = VectorSearchBackend.unknown;
 
   static const String _emotionalSeedFlag =
       'vector_store.native.emotional_seed.v2';
@@ -51,13 +60,15 @@ class VectorStoreService {
   int get entryCount => _entries.length;
 
   bool get usesNativeZvec => _nativeAvailable;
+  VectorSearchBackend get lastQueryBackend => _lastQueryBackend;
+  VectorSearchBackend get lastDocumentQueryBackend => _lastDocumentQueryBackend;
 
   Future<bool> hasReadyNativeCorpus() async {
     if (!Platform.isAndroid) {
       return false;
     }
 
-    await ModelManager.instance.initialize();
+    await initialize();
     final prefs = await SharedPreferences.getInstance();
     final dbDir = Directory('${ModelManager.instance.modelsPath}/zvec_db');
     if (prefs.getBool(_corpusSeedFlag) != true || !await dbDir.exists()) {
@@ -126,11 +137,15 @@ class VectorStoreService {
   }
 
   Future<void> initialize() async {
-    if (_initialized) return;
+    if (_initialized) {
+      await _maybeActivateNativeRuntime();
+      return;
+    }
 
     final pending = _initializeFuture;
     if (pending != null) {
       await pending;
+      await _maybeActivateNativeRuntime();
       return;
     }
 
@@ -138,6 +153,7 @@ class VectorStoreService {
     _initializeFuture = future;
     try {
       await future;
+      await _maybeActivateNativeRuntime();
     } finally {
       if (identical(_initializeFuture, future)) {
         _initializeFuture = null;
@@ -150,7 +166,8 @@ class VectorStoreService {
 
     await EmbeddingService.instance.initialize();
 
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid &&
+        await ModelManager.instance.areRagModelsDownloaded()) {
       await _restoreBundledNativeDbIfAvailable();
       _nativeAvailable = await _ensureNativeRuntimeInitialized();
     }
@@ -233,6 +250,7 @@ class VectorStoreService {
       final nativeSw = Stopwatch()..start();
       final results = _nativeSearch(text, topK: topK, filter: filter);
       if (results != null) {
+        _lastQueryBackend = VectorSearchBackend.nativeZvec;
         _debugLogSearchResults('native', text, results);
         PerfTrace.mark(traceTag, 'native_search', nativeSw);
         PerfTrace.end(traceTag, 'query', totalSw);
@@ -246,6 +264,7 @@ class VectorStoreService {
     PerfTrace.mark(traceTag, 'embed', embedSw);
     final searchSw = Stopwatch()..start();
     final results = query(vector, topK: topK, filter: filter);
+    _lastQueryBackend = VectorSearchBackend.inMemory;
     _debugLogSearchResults('in-memory', text, results);
     PerfTrace.mark(traceTag, 'in_memory_search', searchSw);
     PerfTrace.end(traceTag, 'query', totalSw);
@@ -260,11 +279,13 @@ class VectorStoreService {
     if (_nativeAvailable) {
       final results = _nativeSearchInDocument(documentId, query, topK: limit);
       if (results != null) {
+        _lastDocumentQueryBackend = VectorSearchBackend.nativeZvec;
         return results;
       }
     }
 
     final vector = EmbeddingService.instance.embed(query, isQuery: true);
+    _lastDocumentQueryBackend = VectorSearchBackend.inMemory;
     return this.query(
       vector,
       topK: limit,
@@ -460,6 +481,45 @@ class VectorStoreService {
 
   // ── Private helpers ──
 
+  Future<void> _maybeActivateNativeRuntime() async {
+    if (!Platform.isAndroid || _nativeAvailable) {
+      return;
+    }
+
+    final pending = _activateNativeFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+
+    final future = _maybeActivateNativeRuntimeInternal();
+    _activateNativeFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_activateNativeFuture, future)) {
+        _activateNativeFuture = null;
+      }
+    }
+  }
+
+  Future<void> _maybeActivateNativeRuntimeInternal() async {
+    if (_nativeAvailable) {
+      return;
+    }
+
+    await ModelManager.instance.initialize();
+    if (!await ModelManager.instance.areRagModelsDownloaded()) {
+      return;
+    }
+
+    await _restoreBundledNativeDbIfAvailable();
+    _nativeAvailable = await _ensureNativeRuntimeInitialized();
+    if (_nativeAvailable) {
+      debugPrint('VectorStore: Native runtime activated');
+    }
+  }
+
   Future<bool> _ensureNativeRuntimeInitialized() async {
     if (_nativeRuntimeInitialized) {
       return true;
@@ -471,6 +531,11 @@ class VectorStoreService {
 
     try {
       await ModelManager.instance.initialize();
+      if (!await ModelManager.instance.areRagModelsDownloaded()) {
+        return false;
+      }
+      await ModelManager.instance.ensureRuntimeReady(ModelType.embedding);
+      await ModelManager.instance.ensureRuntimeReady(ModelType.llm);
       final llmConfigPath = ModelManager.instance.llmRuntimeConfigPath();
       final modelDir = ModelManager.instance.modelPath(ModelType.llm);
       if (llmConfigPath.isEmpty || modelDir.isEmpty) {

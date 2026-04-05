@@ -12,8 +12,11 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/llm_service.dart';
 import '../../../core/services/quran_api_service.dart';
 import '../../../core/services/quran_rag_service.dart';
+import '../../../core/services/vector_store_service.dart' show EmotionalVerse;
 import '../../../core/services/voice_service.dart';
 import '../../../core/utils/asr_normalization_pipeline.dart';
+import '../../../core/utils/emotional_response_repair.dart';
+import '../../../core/utils/emotional_verse_selector.dart';
 import '../../../core/utils/intent_parser.dart';
 import '../../../core/utils/perf_trace.dart';
 import '../../../core/utils/prompt_templates.dart';
@@ -486,38 +489,42 @@ class HomeNotifier extends StateNotifier<HomeState> {
   Future<void> _handleEmotionalGuidance(Intent intent) async {
     final emotion = intent.emotion ?? 'difficulty';
 
-    // Use the proper RAG pipeline (same as general questions) so we get
-    // structured evidence with verseKey + translationText for pre-filled slots.
-    final ragQuery = intent.retrievalQuery.isNotEmpty
-        ? intent.retrievalQuery
-        : '$emotion ${intent.rawText}';
-    final evidence = await _buildGlobalQuestionEvidence(ragQuery);
-    final topEvidence = evidence.take(3).toList(growable: false);
+    final selectedVerses = _selectEmotionalVerses(intent, emotion);
 
     final List<String> verseReferences;
     final List<String> verseTranslations;
     final List<GroundingCitation> citations;
 
-    if (topEvidence.isEmpty) {
-      // Static fallback — hardcoded but still displayed as pre-filled slots.
-      verseReferences = ['94:5-6', '2:286'];
+    if (selectedVerses.isEmpty) {
+      verseReferences = ['94:5', '2:286'];
       verseTranslations = [
-        'For indeed, with hardship will be ease. Indeed, with hardship will be ease.',
+        'For indeed, with hardship will be ease.',
         'Allah does not burden a soul beyond that it can bear.',
       ];
-      citations = const <GroundingCitation>[];
+      citations = <GroundingCitation>[
+        const GroundingCitation(
+          verseKey: '94:5',
+          sourceLabel: 'Curated emotional verse',
+          excerpt: 'For indeed, with hardship will be ease.',
+        ),
+        const GroundingCitation(
+          verseKey: '2:286',
+          sourceLabel: 'Curated emotional verse',
+          excerpt: 'Allah does not burden a soul beyond that it can bear.',
+        ),
+      ];
     } else {
-      verseReferences = topEvidence
+      verseReferences = selectedVerses
           .map((item) => item.verseKey)
           .toList(growable: false);
-      verseTranslations = topEvidence
+      verseTranslations = selectedVerses
           .map((item) => item.translationText)
           .toList(growable: false);
-      citations = _citationsFromEvidence(topEvidence);
+      citations = _citationsFromEmotionalVerses(selectedVerses);
     }
 
     debugPrint(
-      'HomeNotifier: emotional evidence_count=${evidence.length} verse_keys=${verseReferences.join(", ")}',
+      'HomeNotifier: emotional curated_count=${verseReferences.length} verse_keys=${verseReferences.join(", ")}',
     );
 
     final prompt = PromptTemplates.emotionalGuidance(
@@ -528,6 +535,17 @@ class HomeNotifier extends StateNotifier<HomeState> {
     );
 
     await _streamLlmResponse(prompt, intent, citations: citations);
+  }
+
+  List<EmotionalVerse> _selectEmotionalVerses(Intent intent, String emotion) {
+    final queryText = intent.retrievalQuery.isNotEmpty
+        ? intent.retrievalQuery
+        : intent.rawText;
+    return EmotionalVerseSelector.select(
+      emotion: emotion,
+      userText: queryText,
+      limit: 2,
+    );
   }
 
   Future<void> _handleGeneralQuestion(Intent intent) async {
@@ -547,9 +565,9 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return;
     }
 
-    // Cap at 3 evidence items: matches the max slot count and keeps the prompt
-    // within the 0.8B model's comfortable context window.
-    final topEvidence = evidence.take(3).toList(growable: false);
+    // Cap at 2 evidence items to keep prompt and output size smaller on the
+    // 0.8B on-device model while preserving grounding quality.
+    final topEvidence = evidence.take(2).toList(growable: false);
     final allEvidenceBlocks = <String>[
       for (var index = 0; index < topEvidence.length; index += 1)
         '[EVIDENCE ${index + 1}]\n${topEvidence[index].promptBlock}',
@@ -615,6 +633,20 @@ class HomeNotifier extends StateNotifier<HomeState> {
           (item) => GroundingCitation(
             verseKey: item.verseKey,
             sourceLabel: item.tafsirSource,
+            excerpt: item.translationText,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<GroundingCitation> _citationsFromEmotionalVerses(
+    List<EmotionalVerse> verses,
+  ) {
+    return verses
+        .map(
+          (item) => GroundingCitation(
+            verseKey: item.verseKey,
+            sourceLabel: 'Curated emotional verse',
             excerpt: item.translationText,
           ),
         )
@@ -750,10 +782,26 @@ class HomeNotifier extends StateNotifier<HomeState> {
     debugPrint(
       'HomeNotifier: raw_response_chars=${rawResponse.length} raw_preview=${rawResponse.substring(0, rawResponse.length.clamp(0, 400))}',
     );
-    final repairedResponse = _repairGroundedVerseCoverage(
-      rawResponse,
-      citations,
-    );
+    var repairedResponse = _repairGroundedVerseCoverage(rawResponse, citations);
+    if (intent.type == IntentType.emotionalGuidance) {
+      repairedResponse = EmotionalResponseRepair.repairIfNeeded(
+        response: repairedResponse,
+        emotion: intent.emotion ?? 'difficulty',
+        citations: citations
+            .where(
+              (citation) =>
+                  citation.verseKey.trim().isNotEmpty &&
+                  (citation.excerpt?.trim().isNotEmpty ?? false),
+            )
+            .map(
+              (citation) => EmotionalResponseCitation(
+                verseKey: citation.verseKey,
+                excerpt: citation.excerpt!.trim(),
+              ),
+            )
+            .toList(growable: false),
+      );
+    }
     final fullResponse = _enforceStrictGrounding(repairedResponse, citations);
     state = state.copyWith(
       isStreaming: false,
@@ -818,12 +866,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
       distinctCitations.add(citation);
     }
 
-    if (distinctCitations.length < 2) {
-      return response;
-    }
-
-    final citedVerseKeys = _extractReferencedVerseKeys(response, seenVerseKeys);
-    if (citedVerseKeys.length >= 2) {
+    if (distinctCitations.isEmpty) {
       return response;
     }
 
@@ -834,22 +877,24 @@ class HomeNotifier extends StateNotifier<HomeState> {
       return response;
     }
 
+    final trimmedResponse = response.trim();
+
     final quranSectionPattern = RegExp(
       r'📖\s*Quran:\s*(.*?)(?=\n\s*📚\s*Explanation:|$)',
       dotAll: true,
     );
-    if (quranSectionPattern.hasMatch(response)) {
-      return response.replaceFirst(
+    if (quranSectionPattern.hasMatch(trimmedResponse)) {
+      return trimmedResponse.replaceFirst(
         quranSectionPattern,
         '📖 Quran:\n$repairedQuranSection\n\n',
       );
     }
 
-    if (response.trim().isEmpty) {
+    if (trimmedResponse.isEmpty) {
       return '📖 Quran:\n$repairedQuranSection';
     }
 
-    return '📖 Quran:\n$repairedQuranSection\n\n${response.trim()}';
+    return '📖 Quran:\n$repairedQuranSection\n\n$trimmedResponse';
   }
 
   String _enforceStrictGrounding(
@@ -881,21 +926,6 @@ class HomeNotifier extends StateNotifier<HomeState> {
       '${unsupportedVerseKeys.join(', ')}',
     );
     return _strictGroundingFailureMessage;
-  }
-
-  Set<String> _extractReferencedVerseKeys(
-    String response,
-    Set<String> allowedVerseKeys,
-  ) {
-    final matches = RegExp(r'\b\d{1,3}:\d{1,3}\b').allMatches(response);
-    final found = <String>{};
-    for (final match in matches) {
-      final verseKey = match.group(0);
-      if (verseKey != null && allowedVerseKeys.contains(verseKey)) {
-        found.add(verseKey);
-      }
-    }
-    return found;
   }
 
   Set<String> _extractAllVerseKeys(String response) {

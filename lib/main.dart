@@ -47,6 +47,11 @@ Future<void> main() async {
 
 Future<void> _warmUpCoreServices() async {
   unawaited(_runStartupTask('vector store init', () async {
+    await ModelManager.instance.initialize();
+    if (!await ModelManager.instance.areRagModelsDownloaded()) {
+      return 'deferred-until-model-download';
+    }
+
     await VectorStoreService.instance.initialize();
     if (await VectorStoreService.instance.hasReadyNativeCorpus()) {
       return 'bundled-native-corpus-ready';
