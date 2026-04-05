@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/models/verse.dart';
+import '../../../core/models/reading_goal.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../bookmarks/providers/bookmarks_provider.dart';
 import '../providers/daily_ayah_provider.dart';
+import '../../reading_goals/providers/reading_goals_provider.dart';
 
 class DailyAyahPage extends ConsumerStatefulWidget {
   const DailyAyahPage({
@@ -35,11 +39,15 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-      () => ref.read(dailyAyahProvider.notifier).load(
+    Future.microtask(() async {
+      await ref.read(dailyAyahProvider.notifier).load(
             forceRefresh: widget.forceRefresh,
-          ),
-    );
+          );
+      if (!mounted) {
+        return;
+      }
+      await ref.read(readingGoalsProvider.notifier).load(silent: true);
+    });
   }
 
   @override
@@ -51,15 +59,20 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
         widget.refreshRequestId != oldWidget.refreshRequestId;
 
     if (shouldRefresh) {
-      Future.microtask(
-        () => ref.read(dailyAyahProvider.notifier).load(forceRefresh: true),
-      );
+      Future.microtask(() async {
+        await ref.read(dailyAyahProvider.notifier).load(forceRefresh: true);
+        if (!mounted) {
+          return;
+        }
+        await ref.read(readingGoalsProvider.notifier).load(silent: true);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(dailyAyahProvider);
+    final goalsState = ref.watch(readingGoalsProvider);
 
     if (widget.autoExplain && !_didAutoExplain && state.verse != null) {
       _didAutoExplain = true;
@@ -152,7 +165,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                   color: AppColors.gold,
                                   height: 2.0,
                                 ),
-                                textDirection: TextDirection.rtl,
+                                textDirection: ui.TextDirection.rtl,
                                 textAlign: TextAlign.center,
                               ),
 
@@ -284,6 +297,15 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                         ),
                       ),
 
+                    if (goalsState.activeGoal != null || goalsState.isLoading)
+                      FadeInUp(
+                        child: _ReadingGoalProgressCard(
+                          goal: goalsState.activeGoal,
+                          progress: goalsState.todayProgress,
+                          isLoading: goalsState.isLoading,
+                        ),
+                      ),
+
                     const SizedBox(height: 32),
 
                     // Motivational text
@@ -358,4 +380,146 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
     );
   }
 
+}
+
+class _ReadingGoalProgressCard extends StatelessWidget {
+  const _ReadingGoalProgressCard({
+    required this.goal,
+    required this.progress,
+    required this.isLoading,
+  });
+
+  final ReadingGoal? goal;
+  final ReadingGoalProgress? progress;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading && goal == null) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 16),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    if (goal == null) {
+      return const SizedBox.shrink();
+    }
+
+    final activeGoal = goal!;
+    final activeProgress = progress;
+    final dueLabel = activeGoal.endDate == null
+        ? null
+        : DateFormat.yMMMd().format(activeGoal.endDate!.toLocal());
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flag_outlined, size: 16, color: AppColors.gold),
+              const SizedBox(width: 8),
+              const Text(
+                'Reading Goal',
+                style: TextStyle(
+                  color: AppColors.gold,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              if (dueLabel != null)
+                Text(
+                  'Due $dueLabel',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${activeGoal.target} ${activeGoal.goalTypeLabel}',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            activeProgress?.summaryLabel ??
+                'Your synced reading goal will update here as you progress.',
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+              height: 1.5,
+            ),
+          ),
+          if (activeProgress != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: activeProgress.progress,
+                backgroundColor: AppColors.background,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.gold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Text(
+                  '${(activeProgress.progress * 100).round()}% complete',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  activeProgress.onTrack ? 'On track' : 'Keep going today',
+                  style: TextStyle(
+                    color: activeProgress.onTrack
+                        ? AppColors.gold
+                        : AppColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

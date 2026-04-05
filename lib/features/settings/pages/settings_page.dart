@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/models/reading_goal.dart';
 import '../../../core/services/daily_notification_service.dart';
 import '../../../core/services/model_manager.dart';
 import '../../../core/services/quran_api_config_service.dart';
@@ -10,6 +12,7 @@ import '../../../core/services/quran_user_session_service.dart';
 import '../../../core/services/quran_user_sync_service.dart';
 import '../../../core/services/voice_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../reading_goals/providers/reading_goals_provider.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -45,6 +48,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadUserAuthState();
     _loadAudioSettings();
     _loadReminderSettings();
+    Future.microtask(() => ref.read(readingGoalsProvider.notifier).load());
   }
 
   @override
@@ -89,6 +93,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _userSession = _userSessionService.session;
       _userAuthError = _userSessionService.lastAuthError;
     });
+
+    unawaited(ref.read(readingGoalsProvider.notifier).load(silent: true));
   }
 
   Future<void> _startUserSignIn() async {
@@ -248,6 +254,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final goalsState = ref.watch(readingGoalsProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
@@ -344,6 +352,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const SizedBox(height: 20),
             _sectionHeader('Daily Reminder'),
             _dailyReminderCard(),
+            const SizedBox(height: 20),
+            _sectionHeader('Reading Goals'),
+            _readingGoalsCard(goalsState),
             const SizedBox(height: 20),
             _sectionHeader('Quran Account'),
             _quranAccountCard(),
@@ -501,10 +512,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final isSignedIn = session?.accessToken.isNotEmpty ?? false;
     final isBusy = _userSessionService.isBusy;
     final subtitle = isSignedIn
-        ? 'Signed in with Quran Foundation. Bookmarks, reading progress, streak sync, and reflections are enabled.'
+        ? 'Signed in with Quran Foundation. Bookmarks, reading goals, reading progress, streak sync, and reflections are enabled.'
         : (_userAuthError?.trim().isNotEmpty == true
               ? _userAuthError!
-              : 'Sign in with your Quran Foundation account to sync bookmarks, reading progress, streaks, and share reflections.');
+          : 'Sign in with your Quran Foundation account to sync bookmarks, reading goals, progress, streaks, and share reflections.');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -930,6 +941,553 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _readingGoalsCard(ReadingGoalsState goalsState) {
+    final isSignedIn = _userSession?.accessToken.isNotEmpty ?? false;
+    final activeGoal = goalsState.activeGoal;
+    final todayProgress = goalsState.todayProgress;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  Icons.flag_outlined,
+                  color: AppColors.gold60,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Reading Goals',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      !isSignedIn
+                          ? 'Sign in to set Quran reading goals and keep progress in sync across devices.'
+                          : activeGoal == null
+                              ? 'Set a pages, chapters, or juz goal and track it alongside your daily Quran habit.'
+                              : _readingGoalSubtitle(activeGoal, todayProgress),
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (goalsState.isLoading || goalsState.isSaving)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          if (goalsState.error?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            Text(
+              goalsState.error!,
+              style: const TextStyle(
+                color: AppColors.error,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+          if (activeGoal != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '${activeGoal.target} ${activeGoal.goalTypeLabel}',
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (activeGoal.endDate != null)
+                        Text(
+                          'Due ${DateFormat.yMMMd().format(activeGoal.endDate!.toLocal())}',
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (todayProgress != null) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        minHeight: 6,
+                        value: todayProgress.progress,
+                        backgroundColor: AppColors.surfaceLight,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          AppColors.gold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          todayProgress.summaryLabel,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          todayProgress.onTrack ? 'On track' : 'Keep going',
+                          style: TextStyle(
+                            color: todayProgress.onTrack
+                                ? AppColors.gold
+                                : AppColors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (!isSignedIn)
+                FilledButton(
+                  onPressed: _userSessionService.isBusy ? null : _startUserSignIn,
+                  child: const Text('Sign In'),
+                )
+              else if (activeGoal == null)
+                FilledButton(
+                  onPressed: goalsState.isSaving ? null : _createReadingGoal,
+                  child: const Text('Create Goal'),
+                ),
+              if (isSignedIn && activeGoal != null)
+                OutlinedButton(
+                  onPressed: goalsState.isSaving
+                      ? null
+                      : () => _editReadingGoal(activeGoal),
+                  child: const Text('Edit'),
+                ),
+              if (isSignedIn && activeGoal != null)
+                TextButton(
+                  onPressed: goalsState.isSaving
+                      ? null
+                      : () => _deleteReadingGoal(activeGoal),
+                  child: const Text('Delete'),
+                ),
+              if (isSignedIn)
+                TextButton(
+                  onPressed: goalsState.isSaving
+                      ? null
+                      : () => ref.read(readingGoalsProvider.notifier).load(),
+                  child: const Text('Refresh'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _readingGoalSubtitle(
+    ReadingGoal goal,
+    ReadingGoalProgress? progress,
+  ) {
+    final dueLabel = goal.endDate == null
+        ? null
+        : DateFormat.yMMMd().format(goal.endDate!.toLocal());
+    if (progress != null) {
+      final tail = dueLabel == null ? '' : ' • due $dueLabel';
+      return '${progress.summaryLabel}$tail';
+    }
+    if (dueLabel != null) {
+      return 'Active goal: ${goal.target} ${goal.goalTypeLabel.toLowerCase()} by $dueLabel.';
+    }
+    return 'Active goal: ${goal.target} ${goal.goalTypeLabel.toLowerCase()}.';
+  }
+
+  Future<void> _createReadingGoal() async {
+    final draft = await _openReadingGoalSheet();
+    if (draft == null || !mounted) {
+      return;
+    }
+
+    final success = await ref.read(readingGoalsProvider.notifier).createGoal(
+          type: draft.goalType,
+          target: draft.target,
+          deadline: draft.deadline,
+        );
+    if (!mounted) {
+      return;
+    }
+
+    final message = success
+        ? 'Reading goal saved.'
+        : ref.read(readingGoalsProvider).error ??
+            'Could not save reading goal.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _editReadingGoal(ReadingGoal goal) async {
+    final draft = await _openReadingGoalSheet(initialGoal: goal);
+    if (draft == null || !mounted) {
+      return;
+    }
+
+    final success = await ref.read(readingGoalsProvider.notifier).updateGoal(
+          goal: goal,
+          type: draft.goalType,
+          target: draft.target,
+          deadline: draft.deadline,
+        );
+    if (!mounted) {
+      return;
+    }
+
+    final message = success
+        ? 'Reading goal updated.'
+        : ref.read(readingGoalsProvider).error ??
+            'Could not update reading goal.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _deleteReadingGoal(ReadingGoal goal) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text(
+          'Delete reading goal?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'This removes your current synced reading goal.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final success = await ref
+        .read(readingGoalsProvider.notifier)
+        .deleteGoal(goal.id);
+    if (!mounted) {
+      return;
+    }
+
+    final message = success
+        ? 'Reading goal deleted.'
+        : ref.read(readingGoalsProvider).error ??
+            'Could not delete reading goal.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<_ReadingGoalDraft?> _openReadingGoalSheet({
+    ReadingGoal? initialGoal,
+  }) {
+    return showModalBottomSheet<_ReadingGoalDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ReadingGoalSheet(initialGoal: initialGoal),
+    );
+  }
+}
+
+class _ReadingGoalDraft {
+  const _ReadingGoalDraft({
+    required this.goalType,
+    required this.target,
+    required this.deadline,
+  });
+
+  final String goalType;
+  final int target;
+  final DateTime deadline;
+}
+
+class _ReadingGoalSheet extends StatefulWidget {
+  const _ReadingGoalSheet({this.initialGoal});
+
+  final ReadingGoal? initialGoal;
+
+  @override
+  State<_ReadingGoalSheet> createState() => _ReadingGoalSheetState();
+}
+
+class _ReadingGoalSheetState extends State<_ReadingGoalSheet> {
+  static const List<String> _goalTypes = <String>['pages', 'chapters', 'juzs'];
+
+  late final TextEditingController _targetController;
+  late String _goalType;
+  late DateTime _deadline;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _goalType = widget.initialGoal?.goalType ?? 'pages';
+    _targetController = TextEditingController(
+      text: widget.initialGoal?.target.toString() ?? '5',
+    );
+    _deadline = widget.initialGoal?.endDate?.toLocal() ??
+        DateTime.now().add(const Duration(days: 30));
+  }
+
+  @override
+  void dispose() {
+    _targetController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDeadline() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _deadline,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.gold,
+              surface: AppColors.surfaceLight,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() => _deadline = picked);
+  }
+
+  void _submit() {
+    final target = int.tryParse(_targetController.text.trim());
+    if (target == null || target <= 0) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Enter a valid target greater than 0.')),
+        );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    Navigator.of(context).pop(
+      _ReadingGoalDraft(
+        goalType: _goalType,
+        target: target,
+        deadline: _deadline,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom +
+        MediaQuery.of(context).padding.bottom;
+    final isEditing = widget.initialGoal != null;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 80),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  isEditing ? 'Edit Goal' : 'Create Goal',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                  color: AppColors.textMuted,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Set a synced Quran reading target for pages, chapters, or juz.',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 18),
+            DropdownButtonFormField<String>(
+              initialValue: _goalType,
+              dropdownColor: AppColors.surfaceLight,
+              decoration: const InputDecoration(labelText: 'Goal type'),
+              items: _goalTypes
+                  .map(
+                    (value) => DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(
+                        value[0].toUpperCase() + value.substring(1),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+                setState(() => _goalType = value);
+              },
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _targetController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Target',
+                hintText: 'e.g. 5',
+              ),
+            ),
+            const SizedBox(height: 14),
+            InkWell(
+              onTap: _pickDeadline,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.event_rounded,
+                      color: AppColors.gold,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Deadline • ${DateFormat.yMMMd().format(_deadline)}',
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Change',
+                      style: TextStyle(
+                        color: AppColors.gold,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _submitting ? null : _submit,
+                child: Text(isEditing ? 'Save Goal' : 'Create Goal'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

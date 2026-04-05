@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/bookmark.dart';
+import '../models/reading_goal.dart';
 import '../models/verse.dart';
 import 'database_service.dart';
 import 'quran_api_config_service.dart';
@@ -270,6 +271,387 @@ class QuranUserSyncService {
     await syncBookmarksToLocal();
   }
 
+  // ── Reading Goals (provisional contract) ────────────────────────────────
+
+  String? _lastGoalError;
+
+  String? get lastGoalError => _lastGoalError;
+
+  Future<ReadingGoal?> fetchActiveReadingGoal() async {
+    _lastGoalError = null;
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      return null;
+    }
+
+    try {
+      final response = await _goalRequest(
+        method: 'GET',
+        config: config,
+        headers: headers,
+        pathCandidates: const <String>[
+          '/user/reading_goals',
+          '/reading_goals',
+        ],
+      );
+      if (!_isSuccessStatus(response?.statusCode)) {
+        _lastGoalError = _goalErrorMessage(
+          response,
+          fallback: 'Could not load reading goals.',
+        );
+        return null;
+      }
+
+      final goalMap = _extractReadingGoalMap(response?.data);
+      if (goalMap == null) {
+        return null;
+      }
+
+      return ReadingGoal.fromJson(goalMap);
+    } catch (error) {
+      _lastGoalError = 'Could not load reading goals: $error';
+      debugPrint('UserSync: Failed to fetch reading goal: $error');
+      return null;
+    }
+  }
+
+  Future<ReadingGoalProgress?> fetchTodayGoalProgress({
+    ReadingGoal? goal,
+  }) async {
+    _lastGoalError = null;
+    final config = await _getConfig();
+    final headers = await _authHeaders(includeTimezone: true);
+    if (config == null || headers == null) {
+      return null;
+    }
+
+    try {
+      final response = await _goalRequest(
+        method: 'GET',
+        config: config,
+        headers: headers,
+        pathCandidates: const <String>[
+          '/user/goals/today',
+          '/goals/today',
+          '/reading_goals/today',
+        ],
+      );
+      if (!_isSuccessStatus(response?.statusCode)) {
+        _lastGoalError = _goalErrorMessage(
+          response,
+          fallback: 'Could not load today\'s goal progress.',
+        );
+        return null;
+      }
+
+      final progressMap = _extractGoalProgressMap(response?.data);
+      if (progressMap == null) {
+        return goal == null
+            ? null
+            : ReadingGoalProgress.fromJson(const <String, dynamic>{}, goal: goal);
+      }
+
+      return ReadingGoalProgress.fromJson(progressMap, goal: goal);
+    } catch (error) {
+      _lastGoalError = 'Could not load today\'s goal progress: $error';
+      debugPrint('UserSync: Failed to fetch goal progress: $error');
+      return null;
+    }
+  }
+
+  Future<ReadingGoal?> createReadingGoal({
+    required String type,
+    required int target,
+    required DateTime deadline,
+  }) async {
+    _lastGoalError = null;
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      _lastGoalError = 'Not signed in.';
+      return null;
+    }
+
+    try {
+      final response = await _goalRequest(
+        method: 'POST',
+        config: config,
+        headers: headers,
+        pathCandidates: const <String>[
+          '/user/reading_goals',
+          '/reading_goals',
+        ],
+        data: <String, dynamic>{
+          'goal_type': type,
+          'target': target,
+          'start_date': DateTime.now().toUtc().toIso8601String(),
+          'end_date': deadline.toUtc().toIso8601String(),
+        },
+      );
+      if (!_isSuccessStatus(response?.statusCode)) {
+        _lastGoalError = _goalErrorMessage(
+          response,
+          fallback: 'Could not create reading goal.',
+        );
+        return null;
+      }
+
+      final goalMap = _extractReadingGoalMap(response?.data);
+      return goalMap == null ? null : ReadingGoal.fromJson(goalMap);
+    } catch (error) {
+      _lastGoalError = 'Could not create reading goal: $error';
+      debugPrint('UserSync: Failed to create reading goal: $error');
+      return null;
+    }
+  }
+
+  Future<ReadingGoal?> updateReadingGoal({
+    required String goalId,
+    required String type,
+    required int target,
+    required DateTime deadline,
+  }) async {
+    _lastGoalError = null;
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      _lastGoalError = 'Not signed in.';
+      return null;
+    }
+
+    try {
+      final response = await _goalRequest(
+        method: 'PATCH',
+        config: config,
+        headers: headers,
+        pathCandidates: <String>[
+          '/user/reading_goals/$goalId',
+          '/reading_goals/$goalId',
+        ],
+        data: <String, dynamic>{
+          'goal_type': type,
+          'target': target,
+          'end_date': deadline.toUtc().toIso8601String(),
+        },
+      );
+      if (!_isSuccessStatus(response?.statusCode)) {
+        _lastGoalError = _goalErrorMessage(
+          response,
+          fallback: 'Could not update reading goal.',
+        );
+        return null;
+      }
+
+      final goalMap = _extractReadingGoalMap(response?.data);
+      return goalMap == null ? null : ReadingGoal.fromJson(goalMap);
+    } catch (error) {
+      _lastGoalError = 'Could not update reading goal: $error';
+      debugPrint('UserSync: Failed to update reading goal: $error');
+      return null;
+    }
+  }
+
+  Future<bool> deleteReadingGoal(String goalId) async {
+    _lastGoalError = null;
+    final config = await _getConfig();
+    final headers = await _authHeaders();
+    if (config == null || headers == null) {
+      _lastGoalError = 'Not signed in.';
+      return false;
+    }
+
+    try {
+      final response = await _goalRequest(
+        method: 'DELETE',
+        config: config,
+        headers: headers,
+        pathCandidates: <String>[
+          '/user/reading_goals/$goalId',
+          '/reading_goals/$goalId',
+        ],
+      );
+      if (!_isSuccessStatus(response?.statusCode)) {
+        _lastGoalError = _goalErrorMessage(
+          response,
+          fallback: 'Could not delete reading goal.',
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      _lastGoalError = 'Could not delete reading goal: $error';
+      debugPrint('UserSync: Failed to delete reading goal: $error');
+      return false;
+    }
+  }
+
+  Future<Response<dynamic>?> _goalRequest({
+    required String method,
+    required QuranUserAuthConfig config,
+    required Map<String, String> headers,
+    required List<String> pathCandidates,
+    Map<String, dynamic>? queryParameters,
+    Object? data,
+  }) async {
+    Response<dynamic>? lastResponse;
+
+    for (final path in pathCandidates) {
+      final response = await _dio.request<dynamic>(
+        '${config.userApiBaseUrl}$path',
+        data: data,
+        queryParameters: queryParameters,
+        options: Options(
+          method: method,
+          headers: headers,
+          contentType: data == null ? null : Headers.jsonContentType,
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+
+      lastResponse = response;
+      if (response.statusCode != 404) {
+        return response;
+      }
+    }
+
+    return lastResponse;
+  }
+
+  bool _isSuccessStatus(int? statusCode) {
+    return statusCode != null && statusCode >= 200 && statusCode < 400;
+  }
+
+  String _goalErrorMessage(
+    Response<dynamic>? response, {
+    required String fallback,
+  }) {
+    if (response?.statusCode == 404) {
+      return 'Reading Goals API is not available in the current environment.';
+    }
+
+    final message = _responseMessage(response?.data);
+    if (message != null && message.trim().isNotEmpty) {
+      return message.trim();
+    }
+    return fallback;
+  }
+
+  Map<String, dynamic>? _extractReadingGoalMap(dynamic data) {
+    final directMap = _asMap(data);
+    if (directMap != null) {
+      for (final key in const <String>[
+        'goal',
+        'reading_goal',
+        'readingGoal',
+        'data',
+      ]) {
+        final nestedMap = _asMap(directMap[key]);
+        if (nestedMap != null && _looksLikeReadingGoalMap(nestedMap)) {
+          return nestedMap;
+        }
+
+        final nestedList = _asMapList(directMap[key]);
+        if (nestedList.isNotEmpty) {
+          final first = nestedList.firstWhere(
+            _looksLikeReadingGoalMap,
+            orElse: () => nestedList.first,
+          );
+          return first;
+        }
+      }
+
+      for (final key in const <String>[
+        'goals',
+        'reading_goals',
+        'readingGoals',
+        'items',
+      ]) {
+        final nestedList = _asMapList(directMap[key]);
+        if (nestedList.isNotEmpty) {
+          final first = nestedList.firstWhere(
+            _looksLikeReadingGoalMap,
+            orElse: () => nestedList.first,
+          );
+          return first;
+        }
+      }
+
+      if (_looksLikeReadingGoalMap(directMap)) {
+        return directMap;
+      }
+    }
+
+    final list = _asMapList(data);
+    if (list.isNotEmpty) {
+      return list.firstWhere(
+        _looksLikeReadingGoalMap,
+        orElse: () => list.first,
+      );
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic>? _extractGoalProgressMap(dynamic data) {
+    final directMap = _asMap(data);
+    if (directMap != null) {
+      for (final key in const <String>[
+        'today',
+        'progress',
+        'goal_progress',
+        'goalProgress',
+        'data',
+      ]) {
+        final nestedMap = _asMap(directMap[key]);
+        if (nestedMap != null && _looksLikeGoalProgressMap(nestedMap)) {
+          return nestedMap;
+        }
+      }
+
+      if (_looksLikeGoalProgressMap(directMap)) {
+        return directMap;
+      }
+    }
+
+    return null;
+  }
+
+  bool _looksLikeReadingGoalMap(Map<String, dynamic> data) {
+    return data.containsKey('goal_type') ||
+        data.containsKey('goalType') ||
+        data.containsKey('target') ||
+        data.containsKey('target_count');
+  }
+
+  bool _looksLikeGoalProgressMap(Map<String, dynamic> data) {
+    return data.containsKey('completed') ||
+        data.containsKey('completed_count') ||
+        data.containsKey('completion') ||
+        data.containsKey('progress') ||
+        data.containsKey('on_track');
+  }
+
+  Map<String, dynamic>? _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return data.cast<String, dynamic>();
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic data) {
+    if (data is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+    return data
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList(growable: false);
+  }
+
   Future<QuranUserAuthConfig?> _getConfig() async {
     await QuranUserSessionService.instance.initialize();
     final ready = await isReadyForSync;
@@ -323,22 +705,23 @@ class QuranUserSyncService {
     );
   }
 
-  // ── Posts / Notes (User API – note + note.publish scope) ─────────────────
+  // ── Posts (User API – post scopes) ───────────────────────────────────────
 
   String? _lastPostError;
 
   /// The human-readable error from the most recent post operation, if any.
   String? get lastPostError => _lastPostError;
 
-  /// Whether the current session includes the `note.publish` scope.
+  /// Whether the current session includes enough scope to publish reflections.
   bool get hasPublishScope {
     final session = QuranUserSessionService.instance.session;
     if (session == null) return false;
     final scopes = (session.scope ?? '').split(RegExp(r'\s+'));
-    return scopes.contains('note.publish');
+    return scopes.contains('post') ||
+      scopes.contains('post.create');
   }
 
-  /// Create and publish an LLM response as a post on QuranReflect.
+  /// Create and publish an LLM response as a QuranReflect post.
   Future<QFPost?> createPost({
     required String body,
     List<String> verseKeys = const [],
@@ -351,17 +734,20 @@ class QuranUserSyncService {
       return null;
     }
 
+    final tokenScope = QuranUserSessionService.instance.session?.scope ?? '';
+    if (!hasPublishScope) {
+      _lastPostError =
+          'QuranReflect posting is not enabled for this client yet. The current token is missing `post`/`post.create`. Ask Quran Foundation to enable post scopes for this client, then sign in again.';
+      debugPrint(
+          'UserSync: createPost blocked before request because token is missing post scope. tokenScope=$tokenScope');
+      return null;
+    }
+
     final trimmed = body.trim();
     if (trimmed.length < 6) {
       _lastPostError = 'Post must be at least 6 characters.';
       return null;
     }
-
-    final ranges = verseKeys
-        .map((k) => k.trim())
-        .where((k) => k.contains(':'))
-        .map((k) => '$k-$k')
-        .toList(growable: false);
 
     final requestHeaders = <String, String>{
       ...headers,
@@ -369,7 +755,7 @@ class QuranUserSyncService {
     };
     final requestOptions = Options(
       headers: requestHeaders,
-      validateStatus: (status) => status != null && status < 500,
+      validateStatus: (status) => status != null && status < 600,
     );
 
     final cappedBody = trimmed.length > 10000
@@ -377,21 +763,18 @@ class QuranUserSyncService {
         : trimmed;
 
     try {
-      // Diagnostic: log token scope and request details.
-      final tokenScope = QuranUserSessionService.instance.session?.scope;
+      final publishPayload = _postPayload(
+        body: cappedBody,
+        verseKeys: verseKeys,
+      );
       debugPrint(
-          'UserSync: createPost → POST ${config.userApiBaseUrl}/notes  '
+          'UserSync: createPost → POST ${config.quranReflectApiBaseUrl}/posts  '
           'tokenScope=$tokenScope  clientId=${config.clientId}  '
-          'bodyLen=${cappedBody.length}  saveToQR=true  '
-          'ranges=$ranges');
+          'bodyLen=${cappedBody.length}  verseKeys=$verseKeys');
 
-      var response = await _dio.post<Map<String, dynamic>>(
-        '${config.userApiBaseUrl}/notes',
-        data: <String, dynamic>{
-          'body': cappedBody,
-          'saveToQR': true,
-          if (ranges.isNotEmpty) 'ranges': ranges,
-        },
+      final response = await _dio.post<Map<String, dynamic>>(
+        '${config.quranReflectApiBaseUrl}/posts',
+        data: publishPayload,
         options: requestOptions,
       );
 
@@ -399,53 +782,62 @@ class QuranUserSyncService {
           'UserSync: createPost response status=${response.statusCode} '
           'body=${response.data}');
 
-      if ((response.statusCode ?? 0) == 403) {
-        debugPrint('UserSync: 403 on saveToQR=true – retrying with saveToQR=false');
-
-        // Fallback: save as a private note (saveToQR: false).
-        response = await _dio.post<Map<String, dynamic>>(
-          '${config.userApiBaseUrl}/notes',
-          data: <String, dynamic>{
-            'body': cappedBody,
-            'saveToQR': false,
-            if (ranges.isNotEmpty) 'ranges': ranges,
-          },
-          options: requestOptions,
-        );
-
-        if ((response.statusCode ?? 0) >= 400) {
-          debugPrint(
-              'UserSync: createPost saveToQR=false also failed '
-              'status=${response.statusCode} body=${response.data}');
-          _lastPostError =
-              'Could not save note (${response.statusCode}). '
-              'The client may not have publishing permissions yet.';
-          return null;
-        }
-
-        // Private note saved successfully.
-        _lastPostError = null;
-        final data = response.data?['data'];
-        final post = _extractPost(data, trimmed);
-        debugPrint('UserSync: saved as private note (saveToQR denied)');
-        return post;
-      }
-
       if ((response.statusCode ?? 0) >= 400) {
-        _lastPostError =
-            'Server returned ${response.statusCode}.';
-        debugPrint(
-            'UserSync: createPost failed status=${response.statusCode} '
-            'body=${response.data}');
+        final message = _responseMessage(response.data);
+        _lastPostError = message == null
+            ? 'Could not publish reflection (${response.statusCode}).'
+            : 'Could not publish reflection (${response.statusCode}): $message';
         return null;
       }
 
-      return _extractPost(response.data?['data'], trimmed);
+      _lastPostError = null;
+      return _extractPost(response.data?['post'], trimmed);
     } catch (error) {
       _lastPostError = 'Network error – check your connection.';
       debugPrint('UserSync: Failed to create post: $error');
       return null;
     }
+  }
+
+  Map<String, dynamic> _postPayload({
+    required String body,
+    required List<String> verseKeys,
+  }) {
+    final references = verseKeys
+        .map((key) => key.trim())
+        .where((key) => key.contains(':'))
+        .map((key) {
+          final parts = key.split(':');
+          final chapterId = int.tryParse(parts.first) ?? 0;
+          final ayah = int.tryParse(parts.last) ?? 0;
+          return <String, dynamic>{
+            'chapterId': chapterId,
+            'from': ayah,
+            'to': ayah,
+          };
+        })
+        .where((ref) =>
+            (ref['chapterId'] as int) > 0 && (ref['from'] as int) > 0)
+        .toList(growable: false);
+
+    return <String, dynamic>{
+      'post': <String, dynamic>{
+        'roomPostStatus': 0,
+        'body': body,
+        'draft': false,
+        if (references.isNotEmpty) 'references': references,
+        'publishedAt': DateTime.now().toUtc().toIso8601String(),
+      },
+    };
+  }
+
+  String? _responseMessage(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      final message = data['message'] as String?;
+      final errorDescription = data['error_description'] as String?;
+      return message ?? errorDescription;
+    }
+    return null;
   }
 
   QFPost _extractPost(dynamic data, String fallbackBody) {
@@ -461,7 +853,7 @@ class QuranUserSyncService {
     return QFPost(id: '', body: fallbackBody, createdAt: DateTime.now());
   }
 
-  /// Fetch the signed-in user's published notes/posts (newest first).
+  /// Fetch the signed-in user's reflections (newest first).
   Future<List<QFPost>> listPosts({int limit = 20}) async {
     final config = await _getConfig();
     final headers = await _authHeaders();
@@ -471,10 +863,12 @@ class QuranUserSyncService {
 
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        '${config.userApiBaseUrl}/notes',
+        '${config.quranReflectApiBaseUrl}/posts/my-posts',
         queryParameters: <String, dynamic>{
-          'limit': limit,
-          'sortBy': 'newest',
+          'tab': 'my_reflections',
+          'sortBy': 'latest',
+          'limit': limit > 20 ? 20 : limit,
+          'page': 1,
         },
         options: Options(headers: headers),
       );
@@ -492,7 +886,7 @@ class QuranUserSyncService {
     }
   }
 
-  /// Delete a published note/post by its ID.
+  /// Delete a published reflection by its ID.
   Future<bool> deletePost(String noteId) async {
     final config = await _getConfig();
     final headers = await _authHeaders();
@@ -500,7 +894,7 @@ class QuranUserSyncService {
 
     try {
       final response = await _dio.delete<Map<String, dynamic>>(
-        '${config.userApiBaseUrl}/notes/$noteId',
+        '${config.quranReflectApiBaseUrl}/posts/$noteId',
         options: Options(headers: headers),
       );
       return (response.statusCode ?? 0) < 400;
@@ -513,11 +907,34 @@ class QuranUserSyncService {
   QFPost? _postFromRemote(Map<String, dynamic> data) {
     final id = (data['id'] ?? '').toString();
     final body = (data['body'] ?? '').toString();
+    final authorMap = data['author'] as Map<String, dynamic>?;
+    final author = (authorMap?['displayName'] ??
+            authorMap?['username'] ??
+            authorMap?['firstName'])
+        ?.toString();
+    final references = data['references'] as List?;
+    final verseRanges = <String>[];
+    if (references != null) {
+      for (final ref in references.whereType<Map>()) {
+        final chapterId = ref['chapterId'];
+        final from = ref['from'];
+        final to = ref['to'];
+        if (chapterId is num && from is num && to is num) {
+          verseRanges.add('${chapterId.toInt()}:${from.toInt()}-${chapterId.toInt()}:${to.toInt()}');
+        }
+      }
+    }
     final createdAtValue = data['createdAt'] as String?;
     final createdAt = createdAtValue == null
         ? DateTime.now()
         : DateTime.tryParse(createdAtValue) ?? DateTime.now();
-    return QFPost(id: id, body: body, createdAt: createdAt);
+    return QFPost(
+      id: id,
+      body: body,
+      createdAt: createdAt,
+      author: author,
+      verseRanges: verseRanges,
+    );
   }
 
   // ── Community reflections feed (Content API – post.read via backend) ─────

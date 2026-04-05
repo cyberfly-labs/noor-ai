@@ -11,6 +11,8 @@ import '../../../core/services/quran_user_sync_service.dart';
 import '../../../core/utils/prompt_templates.dart';
 
 class DailyAyahState {
+  static const Object _unset = Object();
+
   final DailyAyah? dailyAyah;
   final Verse? verse;
   final int streak;
@@ -34,8 +36,8 @@ class DailyAyahState {
     Verse? verse,
     int? streak,
     bool? isLoading,
-    String? reflection,
-    String? explanation,
+    Object? reflection = _unset,
+    Object? explanation = _unset,
     bool? isExplaining,
   }) {
     return DailyAyahState(
@@ -43,8 +45,12 @@ class DailyAyahState {
       verse: verse ?? this.verse,
       streak: streak ?? this.streak,
       isLoading: isLoading ?? this.isLoading,
-      reflection: reflection ?? this.reflection,
-      explanation: explanation ?? this.explanation,
+      reflection: identical(reflection, _unset)
+          ? this.reflection
+          : reflection as String?,
+      explanation: identical(explanation, _unset)
+          ? this.explanation
+          : explanation as String?,
       isExplaining: isExplaining ?? this.isExplaining,
     );
   }
@@ -147,7 +153,8 @@ class DailyAyahNotifier extends StateNotifier<DailyAyahState> {
         verse.ayahNumber,
       );
 
-      final prompt = PromptTemplates.explainVerse(
+      final prompt = PromptTemplates.dailyAyahExplanation(
+        verseKey: verse.verseKey,
         arabicText: verse.arabicText ?? '',
         translationText: verse.translationText ?? '',
         tafsirText: tafsir,
@@ -156,16 +163,13 @@ class DailyAyahNotifier extends StateNotifier<DailyAyahState> {
 
       await _llm.initialize();
 
-      final buffer = StringBuffer();
-      await for (final token in _llm.generate(prompt)) {
-        buffer.write(token);
-        state = state.copyWith(
-          explanation: buffer.toString(),
-          isExplaining: true,
-        );
-      }
-
-      final cleanedExplanation = _cleanGeneratedExplanation(buffer.toString());
+      final rawExplanation = await _llm.generateComplete(prompt);
+      final cleanedExplanation = _finalizeExplanation(
+        rawExplanation,
+        verse: verse,
+        tafsirText: tafsir,
+        tafsirSource: tafsirSource,
+      );
       state = state.copyWith(
         explanation: cleanedExplanation,
         isExplaining: false,
@@ -204,7 +208,23 @@ class DailyAyahNotifier extends StateNotifier<DailyAyahState> {
       return trimmed;
     }
 
-    final normalizedWords = trimmed
+    final extractedSections = _extractExplanationSections(trimmed);
+    final sectionNormalized = extractedSections
+        .replaceAll(RegExp(r'^\s*(?:📖\s*)?Quran:\s*$', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*(?:📚\s*)?Explanation:\s*$', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*(?:✨\s*)?Summary:\s*$', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*\[[^\]]+\]\s*$', multiLine: true), '')
+        .replaceAll(
+          RegExp(
+            r"^\s*(match the user's language|do not repeat\.?|return only the explanation\.?|structure your response.*|grounded explanation in .*|each sentence must add new information\.?|quote the verse and reference\.?|short takeaway sentence\.?)\s*$",
+            caseSensitive: false,
+            multiLine: true,
+          ),
+          '',
+        )
+        .trim();
+
+    final normalizedWords = sectionNormalized
         .replaceAllMapped(
           RegExp(r'\b(\w+)(\s+\1\b)+', caseSensitive: false),
           (match) => match.group(1) ?? '',
@@ -233,6 +253,130 @@ class DailyAyahNotifier extends StateNotifier<DailyAyahState> {
     }
 
     return uniqueSegments.join('\n\n').trim();
+  }
+
+  String _extractExplanationSections(String text) {
+    final explanationMatch = RegExp(
+      r'(?:📚\s*)?Explanation:\s*(.*?)(?=(?:✨\s*)?Summary:|$)',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(text);
+    final summaryMatch = RegExp(
+      r'(?:✨\s*)?Summary:\s*(.*)$',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(text);
+
+    if (explanationMatch == null && summaryMatch == null) {
+      return text;
+    }
+
+    final parts = <String>[];
+    final explanation = explanationMatch?.group(1)?.trim();
+    if (explanation != null && explanation.isNotEmpty) {
+      parts.add(explanation);
+    }
+    final summary = summaryMatch?.group(1)?.trim();
+    if (summary != null && summary.isNotEmpty) {
+      parts.add(summary);
+    }
+    return parts.join('\n\n').trim();
+  }
+
+  bool _looksLikePromptScaffold(String text) {
+    if (text.isEmpty) {
+      return true;
+    }
+
+    final normalized = text.toLowerCase();
+    const scaffoldMarkers = <String>{
+      'quote the verse and reference',
+      'grounded explanation in 4-6 sentences',
+      'each sentence must add new information',
+      'short takeaway sentence',
+      'match the user\'s language',
+      'do not repeat',
+      'return only the explanation',
+      'structure your response',
+    };
+
+    if (scaffoldMarkers.any(normalized.contains)) {
+      return true;
+    }
+
+    return RegExp(r'\[[^\]]+\]').hasMatch(text);
+  }
+
+  String _finalizeExplanation(
+    String rawText, {
+    required Verse verse,
+    String? tafsirText,
+    String? tafsirSource,
+  }) {
+    final cleaned = _cleanGeneratedExplanation(rawText);
+    if (cleaned.length >= 80 && !_looksLikePromptScaffold(cleaned)) {
+      return cleaned;
+    }
+
+    debugPrint(
+      'DailyAyah: explanation scaffold detected, using tafsir-backed fallback for ${verse.verseKey}',
+    );
+    return _fallbackExplanation(
+      verse: verse,
+      tafsirText: tafsirText,
+      tafsirSource: tafsirSource,
+    );
+  }
+
+  String _fallbackExplanation({
+    required Verse verse,
+    String? tafsirText,
+    String? tafsirSource,
+  }) {
+    final translation = (verse.translationText ?? '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final normalizedTafsir = (tafsirText ?? '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final tafsirSnippet = _truncateSentences(normalizedTafsir, maxSentences: 3);
+    final source = (tafsirSource ?? '').trim().isEmpty
+        ? 'the local tafsir'
+        : tafsirSource!.trim();
+
+    final paragraphs = <String>[];
+    if (translation.isNotEmpty) {
+      paragraphs.add('Verse ${verse.verseKey} says: "$translation"');
+    }
+    if (tafsirSnippet.isNotEmpty) {
+      paragraphs.add('According to $source, $tafsirSnippet');
+    }
+
+    if (paragraphs.isEmpty) {
+      return 'Verse ${verse.verseKey} invites reflection, but the local explanation text is limited right now.';
+    }
+
+    return paragraphs.join('\n\n');
+  }
+
+  String _truncateSentences(String text, {required int maxSentences}) {
+    if (text.isEmpty) {
+      return text;
+    }
+
+    final sentences = text
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .map((sentence) => sentence.trim())
+        .where((sentence) => sentence.isNotEmpty)
+        .take(maxSentences)
+        .toList(growable: false);
+
+    if (sentences.isEmpty) {
+      final maxChars = text.length > 320 ? 320 : text.length;
+      return text.substring(0, maxChars).trim();
+    }
+
+    return sentences.join(' ');
   }
 }
 

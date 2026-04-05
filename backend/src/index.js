@@ -43,6 +43,8 @@ function oauthHeaders() {
 }
 
 async function exchangeUserToken(params) {
+  console.log('[exchangeUserToken] grant_type:', params.grant_type, 'scope:', params.scope || '(none)');
+
   const response = await axios.post(
     `${oauthBaseUrl}/oauth2/token`,
     new URLSearchParams(params).toString(),
@@ -57,7 +59,10 @@ async function exchangeUserToken(params) {
     },
   );
 
+  console.log('[exchangeUserToken] response status:', response.status, 'scope:', response.data?.scope);
+
   if (response.status >= 400 || !response.data || !response.data.access_token) {
+    console.log('[exchangeUserToken] FAILED:', JSON.stringify(response.data));
     const error = new Error('Quran Foundation user token request failed');
     error.status = response.status;
     error.payload = response.data;
@@ -174,6 +179,8 @@ app.post('/api/qf/auth/exchange', asyncRoute(async (req) => {
   const redirectUri = String(req.body?.redirectUri || '').trim();
   const scope = String(req.body?.scope || '').trim();
 
+  console.log('[exchange] received scope:', JSON.stringify(scope));
+
   if (!code || !codeVerifier || !redirectUri) {
     const error = new Error('Missing code, codeVerifier, or redirectUri');
     error.status = 400;
@@ -190,11 +197,14 @@ app.post('/api/qf/auth/exchange', asyncRoute(async (req) => {
     params.scope = scope;
   }
 
+  console.log('[exchange] forwarding params keys:', Object.keys(params));
+
   return exchangeUserToken(params);
 }));
 
 app.post('/api/qf/auth/refresh', asyncRoute(async (req) => {
   const refreshToken = String(req.body?.refreshToken || '').trim();
+  const scope = String(req.body?.scope || '').trim();
 
   if (!refreshToken) {
     const error = new Error('Missing refreshToken');
@@ -202,10 +212,15 @@ app.post('/api/qf/auth/refresh', asyncRoute(async (req) => {
     throw error;
   }
 
-  return exchangeUserToken({
+  const params = {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
-  });
+  };
+  if (scope) {
+    params.scope = scope;
+  }
+
+  return exchangeUserToken(params);
 }));
 
 app.get('/api/qf/resources/tafsirs', asyncRoute((req) =>

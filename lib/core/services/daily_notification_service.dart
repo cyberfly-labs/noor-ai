@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -22,9 +24,12 @@ class DailyNotificationService {
   static const _prefEnabled = 'daily_notification_enabled';
   static const _prefHour = 'daily_notification_hour';
   static const _prefMinute = 'daily_notification_minute';
+  static const _payloadTypeVerse = 'verse';
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final StreamController<String> _navigationTargets = StreamController<String>.broadcast();
   bool _initialized = false;
+  String? _pendingNavigationTarget;
 
   /// Whether the daily notification is currently enabled.
   bool _enabled = false;
@@ -37,6 +42,14 @@ class DailyNotificationService {
   /// The scheduled minute (0–59).
   int _minute = 0;
   int get minute => _minute;
+
+  Stream<String> get navigationTargets => _navigationTargets.stream;
+
+  String? consumePendingNavigationTarget() {
+    final target = _pendingNavigationTarget;
+    _pendingNavigationTarget = null;
+    return target;
+  }
 
   // ── Initialization ─────────────────────────────────────────────────
 
@@ -70,7 +83,14 @@ class DailyNotificationService {
         iOS: darwinSettings,
         macOS: darwinSettings,
       ),
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
     );
+
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    final launchPayload = launchDetails?.didNotificationLaunchApp == true
+        ? launchDetails?.notificationResponse?.payload
+        : null;
+    _queueNavigationFromPayload(launchPayload);
 
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(_prefEnabled) ?? false;
@@ -143,6 +163,7 @@ class DailyNotificationService {
       title: content.title,
       body: content.body,
       notificationDetails: _notificationDetails(),
+      payload: _notificationPayload(content.verseKey),
     );
   }
 
@@ -177,6 +198,7 @@ class DailyNotificationService {
       body: content.body,
       scheduledDate: scheduledDate,
       notificationDetails: _notificationDetails(),
+      payload: _notificationPayload(content.verseKey),
       androidScheduleMode: scheduleMode,
       // Repeat daily at the same time.
       matchDateTimeComponents: DateTimeComponents.time,
@@ -223,6 +245,7 @@ class DailyNotificationService {
         return _NotificationContent(
           title: _titleForVerse(seededVerse),
           body: '$verseKey — ${_truncate(text, 150)}',
+          verseKey: verseKey,
         );
       }
     } catch (_) {}
@@ -241,7 +264,67 @@ class DailyNotificationService {
     return _NotificationContent(
       title: _titleForVerse(verse),
       body: '${verse.verseKey} — ${_truncate(verse.translationText, 150)}',
+      verseKey: verse.verseKey,
     );
+  }
+
+  void _handleNotificationResponse(NotificationResponse response) {
+    _queueNavigationFromPayload(response.payload);
+  }
+
+  void _queueNavigationFromPayload(String? payload) {
+    final target = _navigationTargetFromPayload(payload);
+    if (target == null) {
+      return;
+    }
+
+    _pendingNavigationTarget = target;
+    if (!_navigationTargets.isClosed) {
+      _navigationTargets.add(target);
+    }
+  }
+
+  String _notificationPayload(String verseKey) {
+    return jsonEncode(<String, String>{
+      'type': _payloadTypeVerse,
+      'verseKey': verseKey,
+    });
+  }
+
+  String? _navigationTargetFromPayload(String? payload) {
+    if (payload == null || payload.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        final type = decoded['type']?.toString().trim();
+        final verseKey = decoded['verseKey']?.toString().trim();
+        if (type == _payloadTypeVerse && verseKey != null) {
+          return _verseRouteFromKey(verseKey);
+        }
+      }
+    } catch (_) {
+      return _verseRouteFromKey(payload.trim());
+    }
+
+    return null;
+  }
+
+  String? _verseRouteFromKey(String verseKey) {
+    final parts = verseKey.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+
+    final surah = int.tryParse(parts[0]);
+    final ayah = int.tryParse(parts[1]);
+    if (surah == null || ayah == null) {
+      return null;
+    }
+
+    return '/verse/$surah/$ayah';
   }
 
   String _titleForVerse(EmotionalVerse verse) {
@@ -336,9 +419,11 @@ class DailyNotificationService {
 class _NotificationContent {
   final String title;
   final String body;
+  final String verseKey;
 
   const _NotificationContent({
     required this.title,
     required this.body,
+    required this.verseKey,
   });
 }

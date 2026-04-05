@@ -71,7 +71,7 @@ class QuranUserAuthConfig {
               : defaultProductionClientId);
   }
 
-  String get normalizedScope => normalizeScope(scope);
+  String get normalizedScope => withRequiredScopes(scope);
 
   static String normalizeScope(String? scope) {
     const allowedScopes = <String>{
@@ -103,12 +103,20 @@ class QuranUserAuthConfig {
     return normalized.join(' ');
   }
 
+  static String withRequiredScopes(String? scope) {
+    return normalizeScope('${scope ?? ''} $defaultScope');
+  }
+
   String get oauthBaseUrl {
     return 'https://oauth2.quran.foundation';
   }
 
   String get userApiBaseUrl {
     return 'https://apis.quran.foundation/auth/v1';
+  }
+
+  String get quranReflectApiBaseUrl {
+    return 'https://apis.quran.foundation/quran-reflect/v1';
   }
 
   String get environmentLabel {
@@ -239,7 +247,7 @@ class QuranUserSessionService extends ChangeNotifier {
   Future<void> updateConfig(QuranUserAuthConfig config) async {
     await initialize();
     _config = config.copyWith(
-      scope: QuranUserAuthConfig.normalizeScope(config.scope),
+      scope: QuranUserAuthConfig.withRequiredScopes(config.scope),
     );
     final prefs = _prefs!;
 
@@ -265,6 +273,8 @@ class QuranUserSessionService extends ChangeNotifier {
 
   Future<bool> startSignIn() async {
     await initialize();
+    _config = _loadConfig();
+    await _migrateLegacyOAuthEnvironment();
     _setBusy(true);
     _lastAuthError = null;
 
@@ -294,6 +304,9 @@ class QuranUserSessionService extends ChangeNotifier {
           'code_challenge_method': 'S256',
         },
       );
+
+      debugPrint('QFAuth: auth URL scope=${_config.normalizedScope}');
+      debugPrint('QFAuth: auth URL=$uri');
 
       var launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
 
@@ -362,6 +375,8 @@ class QuranUserSessionService extends ChangeNotifier {
 
   Future<QuranUserSession?> refreshSession() async {
     await initialize();
+    _config = _loadConfig();
+    await _migrateLegacyOAuthEnvironment();
     final current = _session;
     final refreshToken = current?.refreshToken;
 
@@ -382,7 +397,10 @@ class QuranUserSessionService extends ChangeNotifier {
 
       final response = await _dio.post<Map<String, dynamic>>(
         '$backendBaseUrl/api/qf/auth/refresh',
-        data: <String, String>{'refreshToken': refreshToken},
+        data: <String, String>{
+          'refreshToken': refreshToken,
+          'scope': _config.normalizedScope,
+        },
         options: Options(contentType: Headers.jsonContentType),
       );
 
@@ -435,7 +453,7 @@ class QuranUserSessionService extends ChangeNotifier {
       redirectUri:
           prefs.getString(_configRedirectUriKey) ??
           QuranUserAuthConfig.defaultRedirectUri,
-      scope: QuranUserAuthConfig.normalizeScope(
+      scope: QuranUserAuthConfig.withRequiredScopes(
         prefs.getString(_configScopeKey),
       ),
       preliveClientId: _emptyToNull(prefs.getString(_configPreliveClientIdKey)),
@@ -448,20 +466,21 @@ class QuranUserSessionService extends ChangeNotifier {
   Future<void> _migrateLegacyOAuthEnvironment() async {
     final prefs = _prefs!;
     final savedEnvironment = prefs.getString(_configEnvironmentKey);
+    final upgradedScope = QuranUserAuthConfig.withRequiredScopes(
+      prefs.getString(_configScopeKey),
+    );
+
     if (savedEnvironment == 'production') {
-      final normalizedScope = QuranUserAuthConfig.normalizeScope(
-        prefs.getString(_configScopeKey),
-      );
-      if (prefs.getString(_configScopeKey) != normalizedScope) {
-        _config = _config.copyWith(scope: normalizedScope);
-        await prefs.setString(_configScopeKey, normalizedScope);
+      if (prefs.getString(_configScopeKey) != upgradedScope) {
+        _config = _config.copyWith(scope: upgradedScope);
+        await prefs.setString(_configScopeKey, upgradedScope);
       }
       return;
     }
 
     _config = _config.copyWith(environment: QuranUserEnvironment.production);
     await prefs.setString(_configEnvironmentKey, 'production');
-    await prefs.setString(_configScopeKey, _config.normalizedScope);
+    await prefs.setString(_configScopeKey, upgradedScope);
   }
 
   Future<QuranUserSession?> _loadSession() async {
@@ -548,16 +567,23 @@ class QuranUserSessionService extends ChangeNotifier {
         return;
       }
 
+      final requestedScope = _config.normalizedScope;
+      debugPrint('QFAuth: exchange → scope=$requestedScope backend=$backendBaseUrl');
+
       final response = await _dio.post<Map<String, dynamic>>(
         '$backendBaseUrl/api/qf/auth/exchange',
         data: <String, String>{
           'code': code,
           'redirectUri': _config.redirectUri.trim(),
           'codeVerifier': verifier,
-          'scope': _config.normalizedScope,
+          'scope': requestedScope,
         },
         options: Options(contentType: Headers.jsonContentType),
       );
+
+      debugPrint('QFAuth: exchange response status=${response.statusCode} '
+          'scope=${response.data?['scope']} '
+          'keys=${response.data?.keys.toList()}');
 
       if (response.statusCode != 200 || response.data == null) {
         final message =

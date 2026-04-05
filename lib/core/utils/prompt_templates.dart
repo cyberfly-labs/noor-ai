@@ -16,6 +16,7 @@ class PromptTemplates {
 
   /// Explain a Quran verse using only the supplied translation and tafsir
   static String explainVerse({
+    required String verseKey,
     required String arabicText,
     required String translationText,
     String? tafsirText,
@@ -32,6 +33,7 @@ class PromptTemplates {
     return '''$_noorIdentity
 
 Explain this Quran verse using ONLY the source material below.
+$verseKey
 $arabicBlock$tafsirBlock
 
 Rules:
@@ -53,6 +55,41 @@ Structure your response EXACTLY as:
 [1 short takeaway sentence.]
 
 Match the user's language. Do not repeat.''';
+  }
+
+  static String dailyAyahExplanation({
+    required String verseKey,
+    required String arabicText,
+    required String translationText,
+    String? tafsirText,
+    String? tafsirSource,
+  }) {
+    final sourceLabel = tafsirSource != null && tafsirSource.isNotEmpty
+        ? tafsirSource
+        : 'retrieved tafsir source';
+    final tafsirBlock = tafsirText != null && tafsirText.isNotEmpty
+        ? '\n[TAFSIR]\nSource: $sourceLabel\nText: $tafsirText'
+        : '';
+    final arabicBlock = arabicText.isNotEmpty
+        ? '\n[QURAN]\nVerse: $verseKey\nText (Arabic): $arabicText\nTranslation: $translationText'
+        : '\n[QURAN]\nVerse: $verseKey\nTranslation: $translationText';
+
+    return '''$_noorIdentity
+
+Explain Daily Ayah verse $verseKey using ONLY the source material below.
+$arabicBlock$tafsirBlock
+
+Rules:
+- Return only the explanation in plain text prose.
+- Do not use headings, labels, bullet points, markdown, emoji, brackets, or placeholders.
+- Mention $verseKey once.
+- If you use tafsir points, attribute them to $sourceLabel.
+- Keep it to 4-6 short sentences.
+- Every sentence must be directly supported by the supplied Quran translation or tafsir text.
+- Do not repeat the prompt. Do not copy instructions. Do not output template text.
+- If the evidence is limited, say that plainly.
+
+Return only the explanation.''';
   }
 
   /// Explain the theme/overview of a surah

@@ -331,6 +331,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
     );
 
     final prompt = PromptTemplates.explainVerse(
+      verseKey: evidence.verseKey,
       arabicText: '',
       translationText: evidence.translationText,
       tafsirText: evidence.tafsirText,
@@ -572,8 +573,13 @@ class HomeNotifier extends StateNotifier<HomeState> {
       verseReferences: verseReferences,
       verseTranslations: verseTranslations,
     );
+    final quranSectionStart = prompt.contains('📖') ? prompt.indexOf('📖') : 0;
+    final explanationSectionStart = prompt.contains('📚')
+        ? prompt.indexOf('📚')
+        : prompt.length;
     debugPrint(
-      'HomeNotifier: prompt_chars=${prompt.length} slots_preview=${prompt.substring(prompt.indexOf("📖") < 0 ? 0 : prompt.indexOf("📖"), (prompt.indexOf("📚") < 0 ? prompt.length : prompt.indexOf("📚")).clamp(0, prompt.length))}',
+      'HomeNotifier: prompt_chars=${prompt.length} '
+      'slots_preview=${prompt.substring(quranSectionStart, explanationSectionStart.clamp(0, prompt.length))}',
     );
     await _streamLlmResponse(
       prompt,

@@ -106,6 +106,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   String? _popupTraceTag;
   Stopwatch? _popupCycleSw;
   int _lastPopupLoggedLength = -1;
+  bool _sourcesExpanded = false;
 
   /// True while the user has scrolled up during streaming — pauses auto-scroll.
   bool _userScrolledUp = false;
@@ -143,6 +144,9 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       if (!(next.response?.isNotEmpty ?? false)) {
         _answerPopupDismissedForCurrentResponse = false;
+        if (_sourcesExpanded) {
+          setState(() => _sourcesExpanded = false);
+        }
         if (_userScrolledUp) setState(() => _userScrolledUp = false);
         return;
       }
@@ -168,6 +172,9 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       if ((responseChanged || citationsChanged) &&
           (next.response?.isNotEmpty ?? false)) {
+        if (_sourcesExpanded) {
+          setState(() => _sourcesExpanded = false);
+        }
         _scheduleAutoScroll(isStreaming: next.isStreaming);
         if (!_isAnswerPopupVisible &&
             !_answerPopupDismissedForCurrentResponse) {
@@ -1114,99 +1121,132 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(Icons.verified_outlined, size: 16, color: AppColors.accent),
-            const SizedBox(width: 6),
-            Text(
-              'Sources',
-              style: TextStyle(
-                color: AppColors.accent,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+        InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => setState(() => _sourcesExpanded = !_sourcesExpanded),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.divider),
             ),
-          ],
+            child: Row(
+              children: [
+                Icon(Icons.verified_outlined, size: 16, color: AppColors.accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Sources (${state.citations.length})',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  _sourcesExpanded ? 'Hide' : 'Show',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  _sourcesExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 12),
-        ...state.citations.map((citation) {
-          return InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => _openVerseDetail(citation.verseKey),
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              citation.quranSourceLabel,
-                              style: const TextStyle(
-                                color: AppColors.gold,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
+        if (_sourcesExpanded) ...[
+          const SizedBox(height: 12),
+          ...state.citations.map((citation) {
+            return InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _openVerseDetail(citation.verseKey),
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                citation.quranSourceLabel,
+                                style: const TextStyle(
+                                  color: AppColors.gold,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Tafsir: ${citation.tafsirSourceLabel}',
-                              style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                              const SizedBox(height: 4),
+                              Text(
+                                'Tafsir: ${citation.tafsirSourceLabel}',
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
+                          color: AppColors.textMuted,
+                        ),
+                      ],
+                    ),
+                    if (citation.excerpt != null &&
+                        citation.excerpt!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        citation.excerpt!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                          height: 1.4,
                         ),
                       ),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 14,
-                        color: AppColors.textMuted,
-                      ),
                     ],
-                  ),
-                  if (citation.excerpt != null &&
-                      citation.excerpt!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
-                      citation.excerpt!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      'Tap to open full Quran verse and tafsir',
                       style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                        height: 1.4,
+                        color: AppColors.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tap to open full Quran verse and tafsir',
-                    style: TextStyle(
-                      color: AppColors.accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ],
       ],
     );
   }

@@ -264,7 +264,7 @@ class _PostsFeedPageState extends State<PostsFeedPage>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding + 88),
         itemCount: _communityPosts.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, itemIndex) => const SizedBox(height: 10),
         itemBuilder: (context, i) => _CommunityPostCard(
           post: _communityPosts[i],
         ),
@@ -303,7 +303,7 @@ class _PostsFeedPageState extends State<PostsFeedPage>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding + 88),
         itemCount: _myPosts.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, itemIndex) => const SizedBox(height: 10),
         itemBuilder: (context, i) => _MyPostCard(
           post: _myPosts[i],
           isDeleting: _deletingId == _myPosts[i].id,
