@@ -92,8 +92,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _startUserSignIn() async {
-    await _userSessionService.startSignIn();
+    final launched = await _userSessionService.startSignIn();
     _handleUserSessionChanged();
+
+    if (!mounted || launched) {
+      return;
+    }
+
+    final message = _userSessionService.lastAuthError?.trim();
+    if (message == null || message.isEmpty) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _signOutUser() async {
@@ -362,20 +375,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Center(
               child: Text(
                 'Made with devotion',
-                style: TextStyle(
-                  color: AppColors.textMuted50,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: AppColors.textMuted50, fontSize: 12),
               ),
             ),
             const SizedBox(height: 6),
             Center(
               child: Text(
                 '﷽',
-                style: TextStyle(
-                  color: AppColors.gold40,
-                  fontSize: 20,
-                ),
+                style: TextStyle(color: AppColors.gold40, fontSize: 20),
               ),
             ),
           ],
@@ -494,10 +501,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final isSignedIn = session?.accessToken.isNotEmpty ?? false;
     final isBusy = _userSessionService.isBusy;
     final subtitle = isSignedIn
-      ? 'Signed in with Quran Foundation. Bookmarks, reading progress, and streak sync are enabled.'
+        ? 'Signed in with Quran Foundation. Bookmarks, reading progress, streak sync, and reflections are enabled.'
         : (_userAuthError?.trim().isNotEmpty == true
               ? _userAuthError!
-        : 'Sign in with your Quran Foundation account to sync bookmarks, reading progress, and streaks.');
+              : 'Sign in with your Quran Foundation account to sync bookmarks, reading progress, streaks, and share reflections.');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -627,11 +634,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              icon,
-              color: AppColors.gold60,
-              size: 20,
-            ),
+            child: Icon(icon, color: AppColors.gold60, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(

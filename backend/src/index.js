@@ -74,6 +74,13 @@ async function exchangeUserToken(params) {
   };
 }
 
+const qrBaseUrl = usePrelive
+    ? 'https://apis-prelive.quran.foundation/quran-reflect/v1'
+    : 'https://apis.quran.foundation/quran-reflect/v1';
+
+let cachedPostToken = null;
+let cachedPostTokenExpiresAt = 0;
+
 async function getServiceToken() {
   const now = Date.now();
   if (cachedToken && now < cachedTokenExpiresAt) {
@@ -165,6 +172,7 @@ app.post('/api/qf/auth/exchange', asyncRoute(async (req) => {
   const code = String(req.body?.code || '').trim();
   const codeVerifier = String(req.body?.codeVerifier || '').trim();
   const redirectUri = String(req.body?.redirectUri || '').trim();
+  const scope = String(req.body?.scope || '').trim();
 
   if (!code || !codeVerifier || !redirectUri) {
     const error = new Error('Missing code, codeVerifier, or redirectUri');
@@ -172,12 +180,17 @@ app.post('/api/qf/auth/exchange', asyncRoute(async (req) => {
     throw error;
   }
 
-  return exchangeUserToken({
+  const params = {
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
-  });
+  };
+  if (scope) {
+    params.scope = scope;
+  }
+
+  return exchangeUserToken(params);
 }));
 
 app.post('/api/qf/auth/refresh', asyncRoute(async (req) => {
@@ -219,6 +232,70 @@ app.get('/api/qf/recitations/:recitationId/by_ayah/:verseKey', asyncRoute((req) 
   qfGet(contentBaseUrl, `/recitations/${req.params.recitationId}/by_ayah/${req.params.verseKey}`, req.query)));
 app.get('/api/qf/v1/search', asyncRoute((req) =>
   qfGet(searchBaseUrl, '/v1/search', req.query)));
+
+// ── QuranReflect post feed (Content API – post.read scope) ───────────────
+
+async function getPostToken() {
+  const now = Date.now();
+  if (cachedPostToken && now < cachedPostTokenExpiresAt) {
+    return cachedPostToken;
+  }
+
+  const response = await axios.post(
+    `${oauthBaseUrl}/oauth2/token`,
+    new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: 'post.read',
+    }).toString(),
+    {
+      auth: { username: clientId, password: clientSecret },
+      headers: oauthHeaders(),
+      timeout: 15000,
+      validateStatus: (status) => status != null && status < 500,
+    },
+  );
+
+  if (response.status >= 400 || !response.data || !response.data.access_token) {
+    const error = new Error('post.read token request failed');
+    error.status = response.status;
+    error.payload = response.data;
+    throw error;
+  }
+
+  cachedPostToken = response.data.access_token;
+  const expiresIn = Number(response.data.expires_in || 3600);
+  cachedPostTokenExpiresAt = now + Math.max(expiresIn - 60, 60) * 1000;
+  return cachedPostToken;
+}
+
+async function qrGet(path, queryParameters) {
+  const token = await getPostToken();
+  const response = await axios.get(`${qrBaseUrl}${path}`, {
+    params: filterQuery(queryParameters || {}),
+    headers: {
+      Accept: 'application/json',
+      'x-client-id': clientId,
+      'x-auth-token': token,
+    },
+    timeout: 20000,
+    validateStatus: (status) => status != null && status < 500,
+  });
+
+  if (response.status >= 400) {
+    const error = new Error('QuranReflect request failed');
+    error.status = response.status;
+    error.payload = response.data;
+    throw error;
+  }
+
+  return response.data;
+}
+
+app.get('/api/qf/posts/feed', asyncRoute((req) =>
+  qrGet('/posts/feed', req.query)));
+
+app.get('/api/qf/posts/:postId', asyncRoute((req) =>
+  qrGet(`/posts/${req.params.postId}`, req.query)));
 
 app.listen(port, () => {
   console.log(`Noor AI Quran backend listening on http://localhost:${port}`);

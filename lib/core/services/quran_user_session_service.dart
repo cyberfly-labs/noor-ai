@@ -12,10 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'quran_api_config_service.dart';
 
-enum QuranUserEnvironment {
-  prelive,
-  production,
-}
+enum QuranUserEnvironment { prelive, production }
 
 class QuranUserAuthConfig {
   const QuranUserAuthConfig({
@@ -32,7 +29,7 @@ class QuranUserAuthConfig {
       '33ec2ec8-0c37-4af5-9f86-fd589bc09e22';
   static const String defaultRedirectUri = 'noorai://oauth/callback';
   static const String defaultScope =
-      'offline_access bookmark reading_session activity_day streak note';
+      'offline_access bookmark reading_session activity_day streak note note.publish';
 
   final QuranUserEnvironment environment;
   final String redirectUri;
@@ -67,25 +64,31 @@ class QuranUserAuthConfig {
   String get clientId {
     return environment == QuranUserEnvironment.prelive
         ? (preliveClientId?.trim().isNotEmpty == true
-            ? preliveClientId!.trim()
-            : defaultPreliveClientId)
+              ? preliveClientId!.trim()
+              : defaultPreliveClientId)
         : (productionClientId?.trim().isNotEmpty == true
-            ? productionClientId!.trim()
-            : defaultProductionClientId);
+              ? productionClientId!.trim()
+              : defaultProductionClientId);
   }
 
   String get normalizedScope => normalizeScope(scope);
 
   static String normalizeScope(String? scope) {
+    const allowedScopes = <String>{
+      'offline_access',
+      'bookmark',
+      'reading_session',
+      'activity_day',
+      'streak',
+      'note',
+      'note.publish',
+    };
     final tokens = (scope ?? '').split(RegExp(r'\s+'));
     final normalized = <String>[];
 
     for (final token in tokens) {
       final trimmed = token.trim();
-      if (trimmed.isEmpty ||
-          trimmed == 'openid' ||
-          trimmed == 'user' ||
-          trimmed == 'collection') {
+      if (trimmed.isEmpty || !allowedScopes.contains(trimmed)) {
         continue;
       }
       if (!normalized.contains(trimmed)) {
@@ -151,8 +154,7 @@ class QuranUserSession {
 class QuranUserSessionService extends ChangeNotifier {
   QuranUserSessionService._();
 
-  static final QuranUserSessionService instance =
-      QuranUserSessionService._();
+  static final QuranUserSessionService instance = QuranUserSessionService._();
 
   static const _storage = FlutterSecureStorage();
   static const _configEnvironmentKey = 'qf_user_environment';
@@ -170,13 +172,15 @@ class QuranUserSessionService extends ChangeNotifier {
   static const _pendingStateKey = 'qf_user_pending_state';
   static const _pendingVerifierKey = 'qf_user_pending_verifier';
 
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 12),
-    receiveTimeout: const Duration(seconds: 20),
-    contentType: Headers.formUrlEncodedContentType,
-    headers: <String, String>{'Accept': 'application/json'},
-    validateStatus: (status) => status != null && status < 500,
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 20),
+      contentType: Headers.formUrlEncodedContentType,
+      headers: <String, String>{'Accept': 'application/json'},
+      validateStatus: (status) => status != null && status < 500,
+    ),
+  );
 
   SharedPreferences? _prefs;
   AppLinks? _appLinks;
@@ -204,6 +208,10 @@ class QuranUserSessionService extends ChangeNotifier {
     _session = await _loadSession();
     _appLinks = AppLinks();
 
+    // Mark the service ready before processing deep links so callback handling
+    // does not recurse back into initialize() on cold-start OAuth launches.
+    _initialized = true;
+
     final initialLink = await _appLinks!.getInitialLink();
     if (initialLink != null) {
       await _handleIncomingUri(initialLink);
@@ -219,7 +227,6 @@ class QuranUserSessionService extends ChangeNotifier {
       },
     );
 
-    _initialized = true;
     notifyListeners();
   }
 
@@ -288,10 +295,11 @@ class QuranUserSessionService extends ChangeNotifier {
         },
       );
 
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
+      var launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+      if (!launched) {
+        launched = await launchUrl(uri);
+      }
 
       if (!launched) {
         _lastAuthError = 'Could not open the Quran Foundation sign-in page.';
@@ -374,14 +382,13 @@ class QuranUserSessionService extends ChangeNotifier {
 
       final response = await _dio.post<Map<String, dynamic>>(
         '$backendBaseUrl/api/qf/auth/refresh',
-        data: <String, String>{
-          'refreshToken': refreshToken,
-        },
+        data: <String, String>{'refreshToken': refreshToken},
         options: Options(contentType: Headers.jsonContentType),
       );
 
       if (response.statusCode != 200 || response.data == null) {
-        final message = response.data?['error_description'] as String? ??
+        final message =
+            response.data?['error_description'] as String? ??
             response.data?['message'] as String? ??
             'Refresh failed';
         _lastAuthError = message;
@@ -425,14 +432,13 @@ class QuranUserSessionService extends ChangeNotifier {
 
     return QuranUserAuthConfig.defaults().copyWith(
       environment: QuranUserEnvironment.production,
-      redirectUri: prefs.getString(_configRedirectUriKey) ??
+      redirectUri:
+          prefs.getString(_configRedirectUriKey) ??
           QuranUserAuthConfig.defaultRedirectUri,
       scope: QuranUserAuthConfig.normalizeScope(
         prefs.getString(_configScopeKey),
       ),
-      preliveClientId: _emptyToNull(
-        prefs.getString(_configPreliveClientIdKey),
-      ),
+      preliveClientId: _emptyToNull(prefs.getString(_configPreliveClientIdKey)),
       productionClientId: _emptyToNull(
         prefs.getString(_configProductionClientIdKey),
       ),
@@ -504,7 +510,6 @@ class QuranUserSessionService extends ChangeNotifier {
   }
 
   Future<void> _handleIncomingUri(Uri uri) async {
-    await initialize();
     final redirectUri = Uri.tryParse(_config.redirectUri.trim());
     if (redirectUri == null || !_matchesRedirectUri(uri, redirectUri)) {
       return;
@@ -549,12 +554,14 @@ class QuranUserSessionService extends ChangeNotifier {
           'code': code,
           'redirectUri': _config.redirectUri.trim(),
           'codeVerifier': verifier,
+          'scope': _config.normalizedScope,
         },
         options: Options(contentType: Headers.jsonContentType),
       );
 
       if (response.statusCode != 200 || response.data == null) {
-        final message = response.data?['error_description'] as String? ??
+        final message =
+            response.data?['error_description'] as String? ??
             response.data?['message'] as String? ??
             'Token exchange failed';
         _lastAuthError = message;
@@ -577,7 +584,8 @@ class QuranUserSessionService extends ChangeNotifier {
     String? fallbackRefreshToken,
   }) {
     final accessToken = data['access_token'] as String? ?? '';
-    final refreshToken = data['refresh_token'] as String? ?? fallbackRefreshToken;
+    final refreshToken =
+        data['refresh_token'] as String? ?? fallbackRefreshToken;
     final idToken = data['id_token'] as String?;
     final scope = data['scope'] as String?;
     final tokenType = data['token_type'] as String?;
@@ -633,9 +641,11 @@ class QuranUserSessionService extends ChangeNotifier {
 
   Future<String?> _backendBaseUrl() async {
     await QuranApiConfigService.instance.initialize();
-    final baseUrl =
-        QuranApiConfigService.instance.config.quranFoundationBackendBaseUrl
-            .trim();
+    final baseUrl = QuranApiConfigService
+        .instance
+        .config
+        .quranFoundationBackendBaseUrl
+        .trim();
     if (baseUrl.isEmpty) {
       return null;
     }

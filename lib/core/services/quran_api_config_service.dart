@@ -26,6 +26,7 @@ class QuranApiConfig {
 
   static const _defaultTranslationId = 131;
   static const _defaultRecitationId = 7;
+  static const defaultBackendBaseUrl = 'https://noor-ai-5zjn.onrender.com';
 
   static QuranApiConfig fromEnvironment() {
     final providerValue = const String.fromEnvironment(
@@ -47,7 +48,7 @@ class QuranApiConfig {
       ),
       quranFoundationBackendBaseUrl: const String.fromEnvironment(
         'QF_BACKEND_BASE_URL',
-        defaultValue: '',
+        defaultValue: defaultBackendBaseUrl,
       ),
       usePrelive: const String.fromEnvironment(
             'QF_USE_PRELIVE',
@@ -133,7 +134,7 @@ class QuranApiConfig {
           quranFoundationClientId ?? this.quranFoundationClientId,
       quranFoundationAuthToken:
           quranFoundationAuthToken ?? this.quranFoundationAuthToken,
-        quranFoundationBackendBaseUrl:
+      quranFoundationBackendBaseUrl:
           quranFoundationBackendBaseUrl ?? this.quranFoundationBackendBaseUrl,
       usePrelive: usePrelive ?? this.usePrelive,
       translationId: translationId ?? this.translationId,
@@ -175,8 +176,8 @@ class QuranApiConfigService {
           prefs.getString(_clientIdKey) ?? envConfig.quranFoundationClientId,
       quranFoundationAuthToken:
           prefs.getString(_authTokenKey) ?? envConfig.quranFoundationAuthToken,
-        quranFoundationBackendBaseUrl:
-          prefs.getString(_backendBaseUrlKey) ??
+      quranFoundationBackendBaseUrl:
+        _emptyToNull(prefs.getString(_backendBaseUrlKey)) ??
           envConfig.quranFoundationBackendBaseUrl,
       usePrelive: prefs.getBool(_usePreliveKey) ?? envConfig.usePrelive,
       translationId:
@@ -216,8 +217,9 @@ class QuranApiConfigService {
       provider: provider,
       quranFoundationClientId: clientId.trim(),
       quranFoundationAuthToken: authToken.trim(),
-        quranFoundationBackendBaseUrl:
-          backendBaseUrl?.trim() ?? _config.quranFoundationBackendBaseUrl,
+      quranFoundationBackendBaseUrl:
+          _emptyToNull(backendBaseUrl)?.trim() ??
+          _config.quranFoundationBackendBaseUrl,
       usePrelive: usePrelive,
       translationId: translationId,
       recitationId: recitationId,
@@ -261,5 +263,12 @@ class QuranApiConfigService {
       case QuranApiProvider.alQuranCloud:
         return 'alquran_cloud';
     }
+  }
+
+  String? _emptyToNull(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    return value.trim();
   }
 }

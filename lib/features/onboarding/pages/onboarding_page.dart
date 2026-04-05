@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/services/llm_service.dart';
 import '../../../core/services/model_manager.dart';
+import '../../../core/services/quran_user_session_service.dart';
 import '../../../core/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ class _StartupGatePageState extends State<StartupGatePage> {
     }
 
     if (modelManager.isOnboardingComplete) {
-      _go('/home');
+      _go(_nextLocation);
       unawaited(_validateModelsInBackground(modelManager));
       return;
     }
@@ -50,7 +51,7 @@ class _StartupGatePageState extends State<StartupGatePage> {
     if (!mounted) return;
 
     if (modelsDownloaded) {
-      _go('/home');
+      _go(_nextLocation);
       return;
     }
 
@@ -92,6 +93,9 @@ class _StartupGatePageState extends State<StartupGatePage> {
     _navigated = true;
     context.go(location);
   }
+
+  String get _nextLocation =>
+      QuranUserSessionService.instance.isSignedIn ? '/home' : '/login';
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +216,7 @@ class _OnboardingPageState extends State<OnboardingPage>
         _downloadStatus = 'Models downloaded successfully.';
       });
 
-      context.go('/home');
+      context.go('/login');
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -235,7 +239,7 @@ class _OnboardingPageState extends State<OnboardingPage>
   Future<void> _continueToApp() async {
     await _modelManager.completeOnboarding();
     if (!mounted) return;
-    context.go('/home');
+    context.go(QuranUserSessionService.instance.isSignedIn ? '/home' : '/login');
   }
 
   String _formatDownloadStatus(DownloadProgress progress) {

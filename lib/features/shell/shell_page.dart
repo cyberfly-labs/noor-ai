@@ -106,7 +106,7 @@ class _ShellPageState extends State<ShellPage> {
       case 4:
         return active ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded;
       case 5:
-        return active ? Icons.article_rounded : Icons.article_outlined;
+        return active ? Icons.forum_rounded : Icons.forum_outlined;
       case 6:
         return active ? Icons.settings_rounded : Icons.settings_outlined;
       default:
@@ -127,7 +127,7 @@ class _ShellPageState extends State<ShellPage> {
       case 4:
         return 'Saved';
       case 5:
-        return 'Posts';
+        return 'Reflect';
       case 6:
         return 'Settings';
       default:

@@ -21,16 +21,58 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  static const List<({String label, String subtitle, String prompt, IconData icon})>
+  static const List<
+    ({String label, String subtitle, String prompt, IconData icon})
+  >
   _feelingPrompts = [
-    (label: 'Peaceful', subtitle: 'Verses of tranquility', prompt: 'I feel at peace and want to reflect', icon: Icons.cloud_outlined),
-    (label: 'Seeking guidance', subtitle: 'Wisdom for difficult choices', prompt: 'I need guidance for a difficult decision', icon: Icons.psychology_outlined),
-    (label: 'Grateful', subtitle: 'Reminders of blessings', prompt: 'I feel grateful', icon: Icons.favorite_outline),
-    (label: 'Anxious', subtitle: 'Finding inner calm', prompt: 'I feel anxious', icon: Icons.waves_outlined),
-    (label: 'Sad', subtitle: 'Comfort in difficult times', prompt: 'I feel sad', icon: Icons.water_drop_outlined),
-    (label: 'Lost', subtitle: 'Finding your purpose', prompt: 'I feel lost', icon: Icons.explore_outlined),
-    (label: 'Lonely', subtitle: 'You are never alone', prompt: 'I feel lonely', icon: Icons.person_outline_rounded),
-    (label: 'Happy', subtitle: 'Celebrate with gratitude', prompt: 'I feel happy', icon: Icons.wb_sunny_outlined),
+    (
+      label: 'Peaceful',
+      subtitle: 'Verses of tranquility',
+      prompt: 'I feel at peace and want to reflect',
+      icon: Icons.cloud_outlined,
+    ),
+    (
+      label: 'Seeking guidance',
+      subtitle: 'Wisdom for difficult choices',
+      prompt: 'I need guidance for a difficult decision',
+      icon: Icons.psychology_outlined,
+    ),
+    (
+      label: 'Grateful',
+      subtitle: 'Reminders of blessings',
+      prompt: 'I feel grateful',
+      icon: Icons.favorite_outline,
+    ),
+    (
+      label: 'Anxious',
+      subtitle: 'Finding inner calm',
+      prompt: 'I feel anxious',
+      icon: Icons.waves_outlined,
+    ),
+    (
+      label: 'Sad',
+      subtitle: 'Comfort in difficult times',
+      prompt: 'I feel sad',
+      icon: Icons.water_drop_outlined,
+    ),
+    (
+      label: 'Lost',
+      subtitle: 'Finding your purpose',
+      prompt: 'I feel lost',
+      icon: Icons.explore_outlined,
+    ),
+    (
+      label: 'Lonely',
+      subtitle: 'You are never alone',
+      prompt: 'I feel lonely',
+      icon: Icons.person_outline_rounded,
+    ),
+    (
+      label: 'Happy',
+      subtitle: 'Celebrate with gratitude',
+      prompt: 'I feel happy',
+      icon: Icons.wb_sunny_outlined,
+    ),
   ];
 
   static const List<({String label, String prompt})> _suggestedPrompts = [
@@ -46,7 +88,10 @@ class _HomePageState extends ConsumerState<HomePage> {
       label: 'Healing verses',
       prompt: 'Show me healing and comforting verses from the Quran.',
     ),
-    (label: 'Morning focus', prompt: 'Give me a Quran reflection for starting the day with focus.'),
+    (
+      label: 'Morning focus',
+      prompt: 'Give me a Quran reflection for starting the day with focus.',
+    ),
   ];
 
   final _textController = TextEditingController();
@@ -184,13 +229,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                       const Spacer(),
                       Text(
                         'Noor AI',
-                        style: Theme.of(context).textTheme.titleLarge
-                            ?.copyWith(
-                              color: AppColors.gold,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              fontSize: 22,
-                            ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: AppColors.gold,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                          fontSize: 22,
+                        ),
                       ),
                       const Spacer(),
                       IconButton(
@@ -591,11 +635,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             Positioned(
               top: -8,
               right: -8,
-              child: Icon(
-                bgIcon,
-                size: 56,
-                color: AppColors.textMuted08,
-              ),
+              child: Icon(bgIcon, size: 56, color: AppColors.textMuted08),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,9 +812,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(24),
                       ),
-                      border: Border.all(
-                        color: AppColors.gold12,
-                      ),
+                      border: Border.all(color: AppColors.gold12),
                       boxShadow: [
                         BoxShadow(
                           color: AppColors.black28,
@@ -837,8 +875,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                               IconButton(
                                 onPressed:
                                     state.response == null ||
-                                        state.response!.trim().isEmpty ||
-                                        state.isStreaming
+                                        state.response!.trim().isEmpty
                                     ? null
                                     : () => _shareAsPost(state),
                                 icon: Icon(
@@ -846,7 +883,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                   size: 20,
                                   color: AppColors.textSecondary,
                                 ),
-                                tooltip: 'Share as post',
+                                tooltip: 'Share as reflection',
                               ),
                               IconButton(
                                 onPressed: _hideAnswerPopup,
@@ -901,31 +938,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Future<void> _shareAsPost(HomeState state) async {
-    final response = state.response!.trim();
-    // Verse keys from citations
-    final verseKeys = state.citations
-        .map((c) => c.verseKey)
-        .toList(growable: false);
-
-    // Check sign-in state before opening the sheet
-    final isSignedIn = QuranUserSessionService.instance.isSignedIn;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => _SharePostSheet(
-        responseText: response,
-        verseKeys: verseKeys,
-        isSignedIn: isSignedIn,
-      ),
-    );
-  }
-
   Future<void> _copyAnswer(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -942,6 +954,24 @@ class _HomePageState extends ConsumerState<HomePage> {
       ..showSnackBar(
         const SnackBar(content: Text('Answer copied to clipboard.')),
       );
+  }
+
+  void _shareAsPost(HomeState state) {
+    final body = state.response?.trim() ?? '';
+    if (body.isEmpty) return;
+
+    final verse = state.currentVerse;
+
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SharePostSheet(
+        body: body,
+        verse: verse,
+      ),
+    );
   }
 
   Widget _buildAnswerContent(HomeState state) {
@@ -983,10 +1013,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  AppColors.card,
-                  AppColors.gold04,
-                ],
+                colors: [AppColors.card, AppColors.gold04],
               ),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: AppColors.gold15),
@@ -1347,302 +1374,157 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 }
 
-// ── Share-as-Post bottom sheet ────────────────────────────────────────────────
-
 class _SharePostSheet extends StatefulWidget {
-  const _SharePostSheet({
-    required this.responseText,
-    required this.verseKeys,
-    required this.isSignedIn,
-  });
+  const _SharePostSheet({required this.body, this.verse});
 
-  final String responseText;
-  final List<String> verseKeys;
-  final bool isSignedIn;
+  final String body;
+  final Verse? verse;
 
   @override
   State<_SharePostSheet> createState() => _SharePostSheetState();
 }
 
 class _SharePostSheetState extends State<_SharePostSheet> {
-  late final TextEditingController _bodyController;
-  bool _isPosting = false;
-  String? _error;
-
-  static const int _maxChars = 10000;
-  static const int _minChars = 6;
+  late final TextEditingController _controller;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill with a trimmed version of the LLM response, capped at 10 000 chars.
-    final trimmed = widget.responseText.trim();
-    _bodyController = TextEditingController(
-      text: trimmed.length > _maxChars
-          ? trimmed.substring(0, _maxChars)
-          : trimmed,
-    );
+    _controller = TextEditingController(text: widget.body);
   }
 
   @override
   void dispose() {
-    _bodyController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    final body = _bodyController.text.trim();
-    if (body.length < _minChars) {
-      setState(() => _error = 'Post must be at least $_minChars characters.');
-      return;
-    }
+  Future<void> _publish() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
 
-    setState(() {
-      _isPosting = true;
-      _error = null;
-    });
-
-    final post = await QuranUserSyncService.instance.createPost(
-      body: body,
-      verseKeys: widget.verseKeys,
-    );
-
-    if (!mounted) return;
-
-    if (post != null) {
+    if (!QuranUserSessionService.instance.isSignedIn) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Shared to QuranReflect ✓')),
+          const SnackBar(content: Text('Sign in first to share reflections.')),
         );
-    } else {
-      setState(() {
-        _isPosting = false;
-        _error = 'Could not post. Check your connection and try again.';
-      });
+      return;
     }
+
+    setState(() => _saving = true);
+
+    final sync = QuranUserSyncService.instance;
+    final result = await sync.createPost(
+      body: text,
+      verseKeys: widget.verse != null
+          ? ['${widget.verse!.surahNumber}:${widget.verse!.ayahNumber}']
+          : [],
+    );
+
+    if (!mounted) return;
+
+    Navigator.of(context).pop();
+
+    String message;
+    if (result != null && sync.lastPostError == null) {
+      message = 'Reflection saved!';
+    } else if (result != null) {
+      message = 'Saved as private note (public publishing unavailable).';
+    } else {
+      message = sync.lastPostError ?? 'Could not save — please try again.';
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final charCount = _bodyController.text.length;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom +
+        MediaQuery.of(context).padding.bottom;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(0, 0, 0, bottomInset),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          const SizedBox(height: 10),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.textMuted40,
-              borderRadius: BorderRadius.circular(999),
+    return Container(
+      margin: const EdgeInsets.only(top: 80),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 12, 10),
-            child: Row(
+            const SizedBox(height: 16),
+            Row(
               children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.gold10,
-                  ),
-                  child: const Icon(
-                    Icons.share_rounded,
-                    size: 16,
-                    color: AppColors.gold,
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Text(
-                  'Share to QuranReflect',
+                  'Share as Reflection',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
                 ),
                 const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: Icon(
-                    Icons.close_rounded,
-                    size: 20,
-                    color: AppColors.textSecondary,
+                if (_saving)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  TextButton(
+                    onPressed: _publish,
+                    child: const Text('Publish'),
                   ),
-                ),
               ],
             ),
-          ),
-          Container(height: 0.5, color: AppColors.divider),
-          // Body
-          if (!widget.isSignedIn)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.lock_outline_rounded,
-                    size: 40,
-                    color: AppColors.textMuted,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Sign in required',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Go to Settings → Account to sign in with your Quran Foundation account.',
-                    textAlign: TextAlign.center,
+            if (widget.verse != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Surah ${widget.verse!.surahNumber}:${widget.verse!.ayahNumber}',
                     style: TextStyle(
                       color: AppColors.textMuted,
-                      fontSize: 13,
-                      height: 1.5,
+                      fontSize: 12,
                     ),
                   ),
-                ],
+                ),
               ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Verse tags
-                  if (widget.verseKeys.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: widget.verseKeys
-                          .map(
-                            (k) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.gold10,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: AppColors.gold20,
-                                ),
-                              ),
-                              child: Text(
-                                k,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.gold,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  // Editable body
-                  AnimatedBuilder(
-                    animation: _bodyController,
-                    builder: (context, child) {
-                      return TextField(
-                        controller: _bodyController,
-                        maxLines: 8,
-                        maxLength: _maxChars,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 14,
-                          height: 1.55,
-                        ),
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: AppColors.surfaceLight,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(color: AppColors.divider),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(color: AppColors.divider),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: AppColors.gold40,
-                            ),
-                          ),
-                          counterStyle: TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 11,
-                          ),
-                          contentPadding: const EdgeInsets.all(14),
-                        ),
-                        onChanged: (_) => setState(() => _error = null),
-                      );
-                    },
+            const SizedBox(height: 8),
+            Flexible(
+              child: TextField(
+                controller: _controller,
+                maxLines: null,
+                minLines: 4,
+                decoration: InputDecoration(
+                  hintText: 'Edit your reflection...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.divider),
                   ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: AppColors.error,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: (_isPosting || charCount < _minChars)
-                          ? null
-                          : _submit,
-                      icon: _isPosting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.send_rounded, size: 18),
-                      label: Text(
-                        _isPosting ? 'Posting...' : 'Post to QuranReflect',
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.gold,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        textStyle: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.divider),
                   ),
-                  const SizedBox(height: 20),
-                ],
+                ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
