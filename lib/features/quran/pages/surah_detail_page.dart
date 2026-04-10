@@ -9,10 +9,7 @@ import '../../../core/services/voice_service.dart';
 import '../../../core/theme/app_theme.dart';
 
 class SurahDetailPage extends StatefulWidget {
-  const SurahDetailPage({
-    super.key,
-    required this.surahNumber,
-  });
+  const SurahDetailPage({super.key, required this.surahNumber});
 
   final int surahNumber;
 
@@ -52,7 +49,9 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         future: _detailFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.gold),
+            );
           }
 
           final detail = snapshot.data;
@@ -115,13 +114,16 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           Text(
             title,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           if (subtitle.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(subtitle, style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+            Text(
+              subtitle,
+              style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+            ),
           ],
           if (arabicName.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -130,7 +132,11 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
               child: Text(
                 arabicName,
                 textDirection: TextDirection.rtl,
-                style: const TextStyle(color: AppColors.gold, fontSize: 26, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: AppColors.gold,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -148,9 +154,19 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: hasAudio ? () => _toggleSurahPlayback(detail) : null,
-                  icon: Icon(_isPlayingSurah ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 20),
-                  label: Text(_isPlayingSurah ? 'Stop' : 'Listen', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  onPressed: hasAudio
+                      ? () => _toggleSurahPlayback(detail)
+                      : null,
+                  icon: Icon(
+                    _isPlayingSurah
+                        ? Icons.stop_rounded
+                        : Icons.play_arrow_rounded,
+                    size: 20,
+                  ),
+                  label: Text(
+                    _isPlayingSurah ? 'Stop' : 'Listen',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -160,12 +176,20 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                       ? null
                       : () => context.push('/verse/${widget.surahNumber}/1'),
                   icon: const Icon(Icons.auto_stories_rounded, size: 18),
-                  label: const Text('Read', style: TextStyle(fontWeight: FontWeight.w700)),
+                  label: const Text(
+                    'Read',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.gold,
                     side: BorderSide(color: AppColors.gold25),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
@@ -177,8 +201,12 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   }
 
   Widget _buildChapterInfoCard(BuildContext context, ChapterInfo info) {
-    final fullText = info.text.trim().isNotEmpty ? info.text.trim() : info.shortText.trim();
-    final shortText = info.shortText.trim().isNotEmpty ? info.shortText.trim() : fullText;
+    final fullText = info.text.trim().isNotEmpty
+        ? info.text.trim()
+        : info.shortText.trim();
+    final shortText = info.shortText.trim().isNotEmpty
+        ? info.shortText.trim()
+        : fullText;
     final canExpand = fullText.isNotEmpty && fullText != shortText;
     final visibleText = _isInfoExpanded ? fullText : shortText;
 
@@ -195,15 +223,19 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.gold),
+              const Icon(
+                Icons.info_outline_rounded,
+                size: 18,
+                color: AppColors.gold,
+              ),
               const SizedBox(width: 10),
               Text(
                 'About This Surah',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppColors.gold,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
+                  color: AppColors.gold,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
               ),
             ],
           ),
@@ -215,15 +247,26 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
             const SizedBox(height: 12),
             Text(
               visibleText,
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.6),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                height: 1.6,
+              ),
             ),
           ],
           if (canExpand) ...[
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => setState(() => _isInfoExpanded = !_isInfoExpanded),
-              style: TextButton.styleFrom(foregroundColor: AppColors.gold, padding: EdgeInsets.zero),
-              child: Text(_isInfoExpanded ? 'Show less' : 'Read more', style: const TextStyle(fontSize: 13)),
+              onPressed: () =>
+                  setState(() => _isInfoExpanded = !_isInfoExpanded),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.gold,
+                padding: EdgeInsets.zero,
+              ),
+              child: Text(
+                _isInfoExpanded ? 'Show less' : 'Read more',
+                style: const TextStyle(fontSize: 13),
+              ),
             ),
           ],
         ],
@@ -234,7 +277,8 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   Widget _buildVerseCard(BuildContext context, Verse verse) {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => context.push('/verse/${verse.surahNumber}/${verse.ayahNumber}'),
+      onTap: () =>
+          context.push('/verse/${verse.surahNumber}/${verse.ayahNumber}'),
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -258,21 +302,36 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                   ),
                   child: Text(
                     '${verse.ayahNumber}',
-                    style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w700, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
                 const Spacer(),
                 IconButton(
                   onPressed: () => _playVerseAudio(verse),
-                  icon: const Icon(Icons.play_circle_fill_rounded, color: AppColors.gold, size: 24),
+                  icon: const Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: AppColors.gold,
+                    size: 24,
+                  ),
                   tooltip: 'Play ayah',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 Text(
                   verse.verseKey,
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -284,7 +343,11 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                   verse.arabicText!,
                   textDirection: TextDirection.rtl,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: AppColors.gold, fontSize: 22, height: 1.9),
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontSize: 22,
+                    height: 1.9,
+                  ),
                 ),
               ),
             ],
@@ -292,7 +355,11 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
               const SizedBox(height: 12),
               Text(
                 verse.translationText!,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.6),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  height: 1.6,
+                ),
               ),
             ],
           ],
@@ -302,18 +369,20 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   }
 
   Future<_SurahDetailData> _loadDetail() async {
-    final surahFuture = QuranApiService.instance.listSurahs().then(
-      (surahs) {
-        for (final surah in surahs) {
-          if (surah.number == widget.surahNumber) {
-            return surah;
-          }
+    final surahFuture = QuranApiService.instance.listSurahs().then((surahs) {
+      for (final surah in surahs) {
+        if (surah.number == widget.surahNumber) {
+          return surah;
         }
-        return null;
-      },
+      }
+      return null;
+    });
+    final chapterInfoFuture = QuranApiService.instance.getChapterInfo(
+      widget.surahNumber,
     );
-    final chapterInfoFuture = QuranApiService.instance.getChapterInfo(widget.surahNumber);
-    final versesFuture = QuranApiService.instance.getSurahVerses(widget.surahNumber);
+    final versesFuture = QuranApiService.instance.getSurahVerses(
+      widget.surahNumber,
+    );
 
     final results = await Future.wait<dynamic>([
       surahFuture,
@@ -357,7 +426,11 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       ),
       child: Text(
         label,
-        style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -375,18 +448,20 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       return;
     }
 
-    var urls = detail.verses
-        .map((verse) => verse.audioUrl?.trim() ?? '')
-        .where((url) => url.isNotEmpty)
-        .toList(growable: false);
-
-    if (urls.isEmpty) {
-      urls = await QuranApiService.instance.getSurahAudioUrls(widget.surahNumber);
-    }
+    final urls = await QuranApiService.instance.getSurahAudioUrls(
+      widget.surahNumber,
+      verses: detail.verses,
+    );
 
     if (urls.isEmpty) {
       _showMessage('Audio is not available for this surah right now.');
       return;
+    }
+
+    if (urls.length < detail.verses.length) {
+      _showMessage(
+        'Some ayahs are missing audio. Playing the available verses in order.',
+      );
     }
 
     setState(() {
@@ -409,10 +484,12 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   Future<void> _playVerseAudio(Verse verse) async {
     var url = verse.audioUrl?.trim() ?? '';
     if (url.isEmpty) {
-      url = (await QuranApiService.instance.getAudioUrl(
-        verse.surahNumber,
-        verse.ayahNumber,
-      ))?.trim() ?? '';
+      url =
+          (await QuranApiService.instance.getAudioUrl(
+            verse.surahNumber,
+            verse.ayahNumber,
+          ))?.trim() ??
+          '';
     }
 
     if (url.isEmpty) {

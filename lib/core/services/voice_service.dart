@@ -25,6 +25,218 @@ class TtsVoiceOption {
   final String subtitle;
 }
 
+@visibleForTesting
+String normalizeSpokenTextForTts(String text) {
+  var normalized = text
+      .replaceAll('\r\n', '\n')
+      .replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}]', unicode: true), '')
+      .replaceAll(RegExp(r'[\u2600-\u27BF]'), '');
+
+  normalized = normalized
+      .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+      .replaceAllMapped(RegExp(r'(^|\n)\s*#{1,6}\s*([^\n#]+)'), (match) {
+        final prefix = match.group(1) ?? '';
+        final header = (match.group(2) ?? '').trim();
+        if (header.isEmpty) {
+          return prefix;
+        }
+        return '$prefix$header.\n';
+      })
+      .replaceAllMapped(
+        RegExp(r'(^|\n)\s*>\s*'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAllMapped(
+        RegExp(r'(^|\n)\s*[-*+]\s+'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAllMapped(
+        RegExp(r'(^|\n)\s*\d+\.\s+'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAllMapped(
+        RegExp(r'\*\*(.+?)\*\*'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAllMapped(RegExp(r'__(.+?)__'), (match) => match.group(1) ?? '')
+      .replaceAllMapped(RegExp(r'\*(.+?)\*'), (match) => match.group(1) ?? '')
+      .replaceAllMapped(RegExp(r'_(.+?)_'), (match) => match.group(1) ?? '')
+      .replaceAll(RegExp(r'\*+'), '')
+      .replaceAll(RegExp(r'_+'), ' ')
+      .replaceAllMapped(RegExp(r'`+([^`]*)`+'), (match) => match.group(1) ?? '')
+      .replaceAllMapped(
+        RegExp(r'\[([^\]]+)\]\([^)]*\)'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAll(RegExp(r'https?://\S+'), '')
+      .replaceAllMapped(
+        RegExp(r'\[(QURAN|TAFSIR|HADITH)\]\s*', caseSensitive: false),
+        (match) {
+          final label = match.group(1) ?? '';
+          if (label.isEmpty) {
+            return '';
+          }
+          final spokenLabel =
+              label[0].toUpperCase() + label.substring(1).toLowerCase();
+          return '$spokenLabel. ';
+        },
+      )
+      .replaceAllMapped(
+        RegExp(r'(^|\n)\s*[-*_]{3,}\s*(\n|$)'),
+        (match) => '${match.group(1) ?? ''}. ',
+      )
+      .replaceAllMapped(
+        RegExp(r'\b(\d{1,3}):(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?\b'),
+        _expandVerseReferenceForSpeech,
+      )
+      .replaceAllMapped(RegExp(r'\n{2,}'), (_) => '. ')
+      .replaceAllMapped(RegExp(r'\n+'), (_) => '. ')
+      .replaceAllMapped(RegExp(r'\s+([,.;!?])'), (match) {
+        return match.group(1) ?? '';
+      })
+      .replaceAllMapped(RegExp(r'([,.;!?])(?=\S)'), (match) {
+        final punctuation = match.group(1) ?? '';
+        return '$punctuation ';
+      })
+      .replaceAllMapped(RegExp(r'(?:\.\s*){2,}'), (_) => '. ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  return normalized;
+}
+
+@visibleForTesting
+List<String> buildSpeechChunksForTts(String text, {int maxChunkLength = 220}) {
+  final normalized = text.trim();
+  if (normalized.isEmpty) {
+    return const <String>[];
+  }
+
+  if (normalized.length <= maxChunkLength) {
+    return <String>[normalized];
+  }
+
+  final sentences = normalized
+      .split(RegExp(r'(?<=[.!;])\s+'))
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+
+  final chunks = <String>[];
+  final buffer = StringBuffer();
+
+  void flush() {
+    final chunk = buffer.toString().trim();
+    if (chunk.isNotEmpty) {
+      chunks.add(chunk);
+    }
+    buffer.clear();
+  }
+
+  for (final sentence in sentences) {
+    if (sentence.length > maxChunkLength) {
+      if (buffer.isNotEmpty) {
+        flush();
+      }
+      chunks.addAll(
+        _splitLongTtsChunk(sentence, maxChunkLength: maxChunkLength),
+      );
+      continue;
+    }
+
+    final separator = buffer.isEmpty ? '' : ' ';
+    final candidateLength = buffer.length + separator.length + sentence.length;
+    if (candidateLength > maxChunkLength && buffer.isNotEmpty) {
+      flush();
+    }
+
+    if (buffer.isNotEmpty) {
+      buffer.write(' ');
+    }
+    buffer.write(sentence);
+  }
+
+  if (buffer.isNotEmpty) {
+    flush();
+  }
+
+  return chunks;
+}
+
+String _expandVerseReferenceForSpeech(Match match) {
+  final original = match.group(0) ?? '';
+  final surah = int.tryParse(match.group(1) ?? '');
+  final startAyah = int.tryParse(match.group(2) ?? '');
+  final endAyah = int.tryParse(match.group(3) ?? '');
+
+  if (surah == null || surah < 1 || surah > 114) {
+    return original;
+  }
+  if (startAyah == null || startAyah < 1 || startAyah > 286) {
+    return original;
+  }
+  if (endAyah != null && (endAyah < startAyah || endAyah > 286)) {
+    return original;
+  }
+
+  if (endAyah != null && endAyah != startAyah) {
+    return 'Surah $surah, ayahs $startAyah to $endAyah';
+  }
+
+  return 'Surah $surah, ayah $startAyah';
+}
+
+List<String> _splitLongTtsChunk(String text, {required int maxChunkLength}) {
+  final chunks = <String>[];
+  var remaining = text.trim();
+
+  while (remaining.length > maxChunkLength) {
+    final splitAt = _findPreferredTtsSplit(remaining, maxChunkLength);
+    final head = remaining.substring(0, splitAt).trim();
+    if (head.isNotEmpty) {
+      chunks.add(head);
+    }
+    remaining = remaining.substring(splitAt).trimLeft();
+  }
+
+  if (remaining.isNotEmpty) {
+    chunks.add(remaining);
+  }
+
+  return chunks;
+}
+
+int _findPreferredTtsSplit(String text, int maxChunkLength) {
+  final minPreferredIndex = maxChunkLength ~/ 2;
+  final punctuationBoundaries = <_TtsSplitBoundary>[
+    const _TtsSplitBoundary(', ', 1),
+    const _TtsSplitBoundary('; ', 1),
+    const _TtsSplitBoundary(': ', 1),
+    const _TtsSplitBoundary(') ', 1),
+  ];
+
+  for (final boundary in punctuationBoundaries) {
+    final index = text.lastIndexOf(boundary.token, maxChunkLength);
+    if (index >= minPreferredIndex) {
+      return index + boundary.keepLength;
+    }
+  }
+
+  final whitespaceIndex = text.lastIndexOf(' ', maxChunkLength);
+  if (whitespaceIndex >= minPreferredIndex) {
+    return whitespaceIndex;
+  }
+
+  return maxChunkLength;
+}
+
+class _TtsSplitBoundary {
+  const _TtsSplitBoundary(this.token, this.keepLength);
+
+  final String token;
+  final int keepLength;
+}
+
 class VoiceService {
   VoiceService._();
   static final VoiceService instance = VoiceService._();
@@ -127,6 +339,7 @@ class VoiceService {
   }) async {
     _ttsGain = _clampTtsGain(ttsGain);
     _playbackVolume = _clampPlaybackVolume(playbackVolume);
+    _clearPresynthesizedChunkCache();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_ttsGainPreferenceKey, _ttsGain);
@@ -198,6 +411,7 @@ class VoiceService {
     }
 
     _ttsVoiceId = normalizedVoiceId;
+    _clearPresynthesizedChunkCache();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_ttsVoicePreferenceKey, _ttsVoiceId);
 
@@ -554,17 +768,30 @@ class VoiceService {
 
     try {
       await _player.stop();
-
-      for (final url in queue) {
-        if (_stopPlaybackRequested || sessionId != _playbackSessionId) {
-          break;
-        }
-
-        await _player.setUrl(url);
-        await _player.setVolume(_playbackVolume);
-        await _player.play();
-        await _waitForPlaybackEnd(sessionId);
+      if (sessionId != _playbackSessionId) {
+        return;
       }
+
+      final playlist = ConcatenatingAudioSource(
+        useLazyPreparation: true,
+        children: queue
+            .map((url) => AudioSource.uri(Uri.parse(url)))
+            .toList(growable: false),
+      );
+
+      await _player.setAudioSource(
+        playlist,
+        preload: true,
+        initialIndex: 0,
+        initialPosition: Duration.zero,
+      );
+      if (sessionId != _playbackSessionId) {
+        return;
+      }
+
+      await _player.setVolume(_playbackVolume);
+      await _player.play();
+      await _waitForPlaylistPlaybackEnd(sessionId);
     } finally {
       if (sessionId == _playbackSessionId) {
         await _finishPlayback();
@@ -577,153 +804,18 @@ class VoiceService {
   Future<void> stopPlayback() async {
     _stopPlaybackRequested = true;
     _playbackSessionId += 1;
+    _clearPresynthesizedChunkCache();
     await _player.stop();
     await _finishPlayback();
     _playbackStateController.add(false);
   }
 
   String _normalizeSpokenText(String text) {
-    var normalized = text
-        // Strip emojis (will trip the on-device TTS engine)
-        .replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}]', unicode: true), '')
-        .replaceAll(RegExp(r'[\u2600-\u27BF]'), '');
-
-    // Use replaceAllMapped for capture-group substitutions. String.replaceAll
-    // does not expand $1-style groups and would leak literal "$1" into speech.
-    normalized = normalized
-        // Strip markdown headers (# / ## / ###)
-        .replaceAllMapped(
-          RegExp(r'(^|\n)\s*#{1,6}\s*'),
-          (m) => m.group(1) ?? '',
-        )
-        // Strip markdown bold (**text** / __text__)
-        .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1) ?? '')
-        .replaceAllMapped(RegExp(r'__(.+?)__'), (m) => m.group(1) ?? '')
-        // Strip markdown italic (*text* / _text_)
-        .replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1) ?? '')
-        .replaceAllMapped(RegExp(r'_(.+?)_'), (m) => m.group(1) ?? '')
-        // Strip any remaining lone * or _ markers
-        .replaceAll(RegExp(r'[*_]+'), '')
-        // Strip inline code (`code`)
-        .replaceAll(RegExp(r'`+[^`]*`+'), '')
-        // Strip markdown links [text](url) -> text
-        .replaceAllMapped(
-          RegExp(r'\[([^\]]+)\]\([^)]*\)'),
-          (m) => m.group(1) ?? '',
-        )
-        // Strip bare URLs
-        .replaceAll(RegExp(r'https?://\S+'), '')
-        // Strip markdown blockquotes (> )
-        .replaceAllMapped(RegExp(r'(^|\n)\s*>\s*'), (m) => m.group(1) ?? '')
-        // Strip horizontal rules (---, ***, ___)
-        .replaceAllMapped(
-          RegExp(r'(^|\n)\s*[-*_]{3,}\s*(\n|$)'),
-          (m) => m.group(1) ?? '',
-        )
-        // Strip numbered list markers (1. 2. etc.)
-        .replaceAllMapped(RegExp(r'(^|\n)\s*\d+\.\s*'), (m) => m.group(1) ?? '')
-        // Strip bullet list markers (- / * / +)
-        .replaceAllMapped(RegExp(r'(^|\n)\s*[-*+]\s+'), (m) => m.group(1) ?? '')
-        // Strip [QURAN], [TAFSIR], [HADITH] block labels
-        .replaceAll(
-          RegExp(r'\[(QURAN|TAFSIR|HADITH)\]\s*', caseSensitive: false),
-          '',
-        )
-        // Collapse whitespace
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    return normalized;
+    return normalizeSpokenTextForTts(text);
   }
 
   List<String> _buildSpeechChunks(String text) {
-    final normalized = text.trim();
-    if (normalized.isEmpty) {
-      return const <String>[];
-    }
-
-    if (normalized.length <= _maxTtsChunkLength) {
-      return <String>[normalized];
-    }
-
-    // Split on sentence-ending punctuation — NOT on '?' to avoid stopping mid-
-    // paragraph at question marks (the C++ TTS engine handles '?' internally),
-    // and NOT on colons to avoid micro-chunks from verse refs like "2:153".
-    final sentences = normalized
-        .split(RegExp(r'(?<=[.!;])\s+'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList(growable: false);
-
-    final chunks = <String>[];
-    final buffer = StringBuffer();
-
-    void flush() {
-      final chunk = buffer.toString().trim();
-      if (chunk.isNotEmpty) {
-        chunks.add(chunk);
-      }
-      buffer.clear();
-    }
-
-    for (final sentence in sentences) {
-      if (sentence.length > _maxTtsChunkLength) {
-        if (buffer.isNotEmpty) {
-          flush();
-        }
-        chunks.addAll(_splitLongChunk(sentence));
-        continue;
-      }
-
-      final separator = buffer.isEmpty ? '' : ' ';
-      final candidateLength =
-          buffer.length + separator.length + sentence.length;
-      if (candidateLength > _maxTtsChunkLength && buffer.isNotEmpty) {
-        flush();
-      }
-
-      if (buffer.isNotEmpty) {
-        buffer.write(' ');
-      }
-      buffer.write(sentence);
-    }
-
-    if (buffer.isNotEmpty) {
-      flush();
-    }
-
-    return chunks;
-  }
-
-  List<String> _splitLongChunk(String text) {
-    final words = text.split(RegExp(r'\s+'));
-    final chunks = <String>[];
-    final buffer = StringBuffer();
-
-    for (final word in words) {
-      if (word.isEmpty) {
-        continue;
-      }
-
-      final separator = buffer.isEmpty ? '' : ' ';
-      final candidateLength = buffer.length + separator.length + word.length;
-      if (candidateLength > _maxTtsChunkLength && buffer.isNotEmpty) {
-        chunks.add(buffer.toString().trim());
-        buffer.clear();
-      }
-
-      if (buffer.isNotEmpty) {
-        buffer.write(' ');
-      }
-      buffer.write(word);
-    }
-
-    final tail = buffer.toString().trim();
-    if (tail.isNotEmpty) {
-      chunks.add(tail);
-    }
-
-    return chunks;
+    return buildSpeechChunksForTts(text, maxChunkLength: _maxTtsChunkLength);
   }
 
   List<String>? _splitFailedSynthesisChunk(String text) {
@@ -888,12 +980,37 @@ class VoiceService {
         );
   }
 
+  Future<void> _waitForPlaylistPlaybackEnd(int sessionId) async {
+    final started = await _player.playerStateStream
+        .firstWhere((state) => sessionId != _playbackSessionId || state.playing)
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => _player.playerState,
+        );
+
+    if (sessionId != _playbackSessionId || !started.playing) {
+      return;
+    }
+
+    await _player.playerStateStream.firstWhere(
+      (state) =>
+          sessionId != _playbackSessionId ||
+          state.processingState == ProcessingState.completed ||
+          (_stopPlaybackRequested && !state.playing),
+    );
+  }
+
   double _clampTtsGain(double value) {
     return value.clamp(_minTtsGain, _maxTtsGain).toDouble();
   }
 
   double _clampPlaybackVolume(double value) {
     return value.clamp(_minPlaybackVolume, _maxPlaybackVolume).toDouble();
+  }
+
+  void _clearPresynthesizedChunkCache() {
+    _cachedFirstChunkText = null;
+    _cachedFirstChunkWav = null;
   }
 
   String _normalizeVoiceId(String value) {

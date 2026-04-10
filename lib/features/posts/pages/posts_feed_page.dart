@@ -264,8 +264,10 @@ class _PostsFeedPageState extends State<PostsFeedPage>
         padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding + 88),
         itemCount: _communityPosts.length,
         separatorBuilder: (_, itemIndex) => const SizedBox(height: 10),
-        itemBuilder: (context, i) =>
-            _CommunityPostCard(post: _communityPosts[i]),
+        itemBuilder: (context, i) => _CommunityPostCard(
+          post: _communityPosts[i],
+          onTap: () => _openPostDetails(_communityPosts[i], isMine: false),
+        ),
       ),
     );
   }
@@ -305,8 +307,18 @@ class _PostsFeedPageState extends State<PostsFeedPage>
           post: _myPosts[i],
           isDeleting: _deletingId == _myPosts[i].id,
           onDelete: () => _delete(_myPosts[i]),
+          onTap: () => _openPostDetails(_myPosts[i], isMine: true),
         ),
       ),
+    );
+  }
+
+  void _openPostDetails(QFPost post, {required bool isMine}) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PostDetailSheet(post: post, isMine: isMine),
     );
   }
 
@@ -445,105 +457,126 @@ class _PostsFeedPageState extends State<PostsFeedPage>
 // ── Community post card ──────────────────────────────────────────────────────
 
 class _CommunityPostCard extends StatelessWidget {
-  const _CommunityPostCard({required this.post});
+  const _CommunityPostCard({required this.post, required this.onTap});
 
   final QFPost post;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final dateStr = DateFormat('MMM d, yyyy').format(post.createdAt.toLocal());
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.gold10,
-                ),
-                child: const Icon(
-                  Icons.person_outline_rounded,
-                  size: 14,
-                  color: AppColors.gold,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  post.author ?? 'Community member',
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.gold10,
+                    ),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      size: 14,
+                      color: AppColors.gold,
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      post.author ?? 'Community member',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
               Text(
-                dateStr,
+                post.body,
                 style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 11,
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.55,
                 ),
+                maxLines: 8,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (post.verseRanges.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: post.verseRanges
+                      .map(
+                        (r) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.gold10,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.gold20),
+                          ),
+                          child: Text(
+                            r,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.gold,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _quranReflectBadge()),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Tap to expand',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            post.body,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              height: 1.55,
-            ),
-            maxLines: 8,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (post.verseRanges.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: post.verseRanges
-                  .map(
-                    (r) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.gold10,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.gold20),
-                      ),
-                      child: Text(
-                        r,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: AppColors.gold,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
-          const SizedBox(height: 10),
-          _quranReflectBadge(),
-        ],
+        ),
       ),
     );
   }
@@ -556,11 +589,13 @@ class _MyPostCard extends StatelessWidget {
     required this.post,
     required this.isDeleting,
     required this.onDelete,
+    required this.onTap,
   });
 
   final QFPost post;
   final bool isDeleting;
   final VoidCallback onDelete;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -568,79 +603,274 @@ class _MyPostCard extends StatelessWidget {
       'MMM d, yyyy • h:mm a',
     ).format(post.createdAt.toLocal());
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.gold10,
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 13,
-                  color: AppColors.gold,
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.gold10,
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 13,
+                      color: AppColors.gold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      dateStr,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  if (isDeleting)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.error,
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: IconButton(
+                        onPressed: onDelete,
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                        ),
+                        color: AppColors.textMuted,
+                        padding: EdgeInsets.zero,
+                        tooltip: 'Delete',
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  dateStr,
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 11,
-                  ),
+              const SizedBox(height: 12),
+              Text(
+                post.body,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.55,
                 ),
+                maxLines: 8,
+                overflow: TextOverflow.ellipsis,
               ),
-              if (isDeleting)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.error,
-                  ),
-                )
-              else
-                SizedBox(
-                  width: 30,
-                  height: 30,
-                  child: IconButton(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                    color: AppColors.textMuted,
-                    padding: EdgeInsets.zero,
-                    tooltip: 'Delete',
-                  ),
+              if (post.verseRanges.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: post.verseRanges
+                      .map(
+                        (r) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.gold10,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.gold20),
+                          ),
+                          child: Text(
+                            r,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.gold,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _quranReflectBadge()),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Tap to expand',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            post.body,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              height: 1.55,
-            ),
-            maxLines: 8,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 12),
-          _quranReflectBadge(),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+class _PostDetailSheet extends StatelessWidget {
+  const _PostDetailSheet({required this.post, required this.isMine});
+
+  final QFPost post;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final authorLabel = isMine
+        ? 'Your reflection'
+        : (post.author?.trim().isNotEmpty == true
+              ? post.author!.trim()
+              : 'Community member');
+    final dateLabel = DateFormat(
+      'MMMM d, yyyy • h:mm a',
+    ).format(post.createdAt.toLocal());
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.82,
+      minChildSize: 0.55,
+      maxChildSize: 0.96,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            authorLabel,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            dateLabel,
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                      color: AppColors.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottomInset),
+                  children: [
+                    if (post.verseRanges.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: post.verseRanges
+                            .map(
+                              (range) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.gold10,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: AppColors.gold20),
+                                ),
+                                child: Text(
+                                  range,
+                                  style: const TextStyle(
+                                    color: AppColors.gold,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLight,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.divider),
+                      ),
+                      child: SelectableText(
+                        post.body,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 15,
+                          height: 1.7,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _quranReflectBadge(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -16,27 +16,134 @@ class QuranApiService {
   static final QuranApiService instance = QuranApiService._();
 
   static const _alQuranCloudBaseUrl = 'https://api.alquran.cloud/v1';
-  static const _quranFoundationAudioBaseUrl = 'https://verses.quran.foundation/';
+  static const _quranFoundationAudioBaseUrl =
+      'https://verses.quran.foundation/';
   static const _defaultQuranFoundationTafsirId = 169;
   static const List<int> _ayahCountsBySurah = <int>[
-    7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111,
-    43, 52, 99, 128, 111, 110, 98, 135, 112, 78, 118, 64,
-    77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83,
-    182, 88, 75, 85, 54, 53, 89, 59, 37, 35, 38, 29,
-    18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13,
-    14, 11, 11, 18, 12, 12, 30, 52, 52, 44, 28, 28,
-    20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25,
-    22, 17, 19, 26, 30, 20, 15, 21, 11, 8, 8, 19,
-    5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3,
-    6, 3, 5, 4, 5, 6,
+    7,
+    286,
+    200,
+    176,
+    120,
+    165,
+    206,
+    75,
+    129,
+    109,
+    123,
+    111,
+    43,
+    52,
+    99,
+    128,
+    111,
+    110,
+    98,
+    135,
+    112,
+    78,
+    118,
+    64,
+    77,
+    227,
+    93,
+    88,
+    69,
+    60,
+    34,
+    30,
+    73,
+    54,
+    45,
+    83,
+    182,
+    88,
+    75,
+    85,
+    54,
+    53,
+    89,
+    59,
+    37,
+    35,
+    38,
+    29,
+    18,
+    45,
+    60,
+    49,
+    62,
+    55,
+    78,
+    96,
+    29,
+    22,
+    24,
+    13,
+    14,
+    11,
+    11,
+    18,
+    12,
+    12,
+    30,
+    52,
+    52,
+    44,
+    28,
+    28,
+    20,
+    56,
+    40,
+    31,
+    50,
+    40,
+    46,
+    42,
+    29,
+    19,
+    36,
+    25,
+    22,
+    17,
+    19,
+    26,
+    30,
+    20,
+    15,
+    21,
+    11,
+    8,
+    8,
+    19,
+    5,
+    8,
+    8,
+    11,
+    11,
+    8,
+    3,
+    9,
+    5,
+    4,
+    7,
+    3,
+    6,
+    3,
+    5,
+    4,
+    5,
+    6,
   ];
 
-  late final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 15),
-    headers: {'Accept': 'application/json'},
-    validateStatus: (status) => status != null && status < 500,
-  ));
+  late final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Accept': 'application/json'},
+      validateStatus: (status) => status != null && status < 500,
+    ),
+  );
   String? _tafsirResourceCacheKey;
   Future<List<QuranTafsirResource>>? _tafsirResourcesFuture;
 
@@ -79,7 +186,9 @@ class QuranApiService {
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
     }
-    final normalizedPath = trimmed.startsWith('/') ? trimmed.substring(1) : trimmed;
+    final normalizedPath = trimmed.startsWith('/')
+        ? trimmed.substring(1)
+        : trimmed;
     return '$_quranFoundationAudioBaseUrl$normalizedPath';
   }
 
@@ -182,7 +291,9 @@ class QuranApiService {
     int tafsirId = _defaultQuranFoundationTafsirId,
   }) async {
     if (!_isValidVerseReference(surahNumber, ayahNumber)) {
-      debugPrint('QuranAPI: Invalid tafsir verse reference $surahNumber:$ayahNumber');
+      debugPrint(
+        'QuranAPI: Invalid tafsir verse reference $surahNumber:$ayahNumber',
+      );
       return null;
     }
 
@@ -227,7 +338,9 @@ class QuranApiService {
 
   Future<ChapterInfo?> getChapterInfo(int surahNumber) async {
     if (_maxAyahsForSurah(surahNumber) == null) {
-      debugPrint('QuranAPI: Invalid chapter info request for surah $surahNumber');
+      debugPrint(
+        'QuranAPI: Invalid chapter info request for surah $surahNumber',
+      );
       return null;
     }
     return null;
@@ -272,9 +385,11 @@ class QuranApiService {
       final translations = _listFromData(data?['translations']);
 
       return translations
-          .map((item) => QuranTranslationResource.fromJson(
-                (item as Map).cast<String, dynamic>(),
-              ))
+          .map(
+            (item) => QuranTranslationResource.fromJson(
+              (item as Map).cast<String, dynamic>(),
+            ),
+          )
           .where((item) => item.id > 0)
           .toList(growable: false);
     } catch (e) {
@@ -299,9 +414,11 @@ class QuranApiService {
       final recitations = _listFromData(data?['recitations']);
 
       return recitations
-          .map((item) => QuranRecitationResource.fromJson(
-                (item as Map).cast<String, dynamic>(),
-              ))
+          .map(
+            (item) => QuranRecitationResource.fromJson(
+              (item as Map).cast<String, dynamic>(),
+            ),
+          )
           .where((item) => item.id > 0)
           .toList(growable: false);
     } catch (e) {
@@ -325,7 +442,9 @@ class QuranApiService {
 
   Future<String?> getAudioUrl(int surahNumber, int ayahNumber) async {
     if (!_isValidVerseReference(surahNumber, ayahNumber)) {
-      debugPrint('QuranAPI: Invalid audio verse reference $surahNumber:$ayahNumber');
+      debugPrint(
+        'QuranAPI: Invalid audio verse reference $surahNumber:$ayahNumber',
+      );
       return null;
     }
 
@@ -367,7 +486,9 @@ class QuranApiService {
           return normalized.isEmpty ? null : normalized;
         }
       } catch (e) {
-        debugPrint('QuranAPI: Quran Foundation audio fetch failed for $verseKey, falling back: $e');
+        debugPrint(
+          'QuranAPI: Quran Foundation audio fetch failed for $verseKey, falling back: $e',
+        );
       }
     }
 
@@ -386,14 +507,23 @@ class QuranApiService {
     }
   }
 
-  Future<List<String>> getSurahAudioUrls(int surahNumber) async {
-    final verses = await getSurahVerses(surahNumber);
+  Future<List<String>> getSurahAudioUrls(
+    int surahNumber, {
+    List<Verse>? verses,
+  }) async {
+    final sourceVerses = verses ?? await getSurahVerses(surahNumber);
     final urls = <String>[];
 
-    for (final verse in verses) {
-      final url = await getAudioUrl(verse.surahNumber, verse.ayahNumber);
-      if (url != null && url.trim().isNotEmpty) {
-        urls.add(url.trim());
+    for (final verse in sourceVerses) {
+      final inlineUrl = _normalizeQuranFoundationAudioUrl(verse.audioUrl);
+      if (inlineUrl.isNotEmpty) {
+        urls.add(inlineUrl);
+        continue;
+      }
+
+      final fetchedUrl = await getAudioUrl(verse.surahNumber, verse.ayahNumber);
+      if (fetchedUrl != null && fetchedUrl.trim().isNotEmpty) {
+        urls.add(fetchedUrl.trim());
       }
     }
 
