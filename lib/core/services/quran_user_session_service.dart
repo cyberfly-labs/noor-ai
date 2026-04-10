@@ -29,7 +29,7 @@ class QuranUserAuthConfig {
       '33ec2ec8-0c37-4af5-9f86-fd589bc09e22';
   static const String defaultRedirectUri = 'noorai://oauth/callback';
   static const String defaultScope =
-      'offline_access bookmark reading_session activity_day streak note note.publish';
+      'offline_access bookmark reading_session activity_day streak note note.publish post';
 
   final QuranUserEnvironment environment;
   final String redirectUri;
@@ -82,6 +82,7 @@ class QuranUserAuthConfig {
       'streak',
       'note',
       'note.publish',
+      'post',
     };
     final tokens = (scope ?? '').split(RegExp(r'\s+'));
     final normalized = <String>[];
@@ -568,7 +569,9 @@ class QuranUserSessionService extends ChangeNotifier {
       }
 
       final requestedScope = _config.normalizedScope;
-      debugPrint('QFAuth: exchange → scope=$requestedScope backend=$backendBaseUrl');
+      debugPrint(
+        'QFAuth: exchange → scope=$requestedScope backend=$backendBaseUrl',
+      );
 
       final response = await _dio.post<Map<String, dynamic>>(
         '$backendBaseUrl/api/qf/auth/exchange',
@@ -581,9 +584,11 @@ class QuranUserSessionService extends ChangeNotifier {
         options: Options(contentType: Headers.jsonContentType),
       );
 
-      debugPrint('QFAuth: exchange response status=${response.statusCode} '
-          'scope=${response.data?['scope']} '
-          'keys=${response.data?.keys.toList()}');
+      debugPrint(
+        'QFAuth: exchange response status=${response.statusCode} '
+        'scope=${response.data?['scope']} '
+        'keys=${response.data?.keys.toList()}',
+      );
 
       if (response.statusCode != 200 || response.data == null) {
         final message =

@@ -8,7 +8,6 @@ import 'app.dart';
 import 'core/services/database_service.dart';
 import 'core/services/daily_ayah_widget_service.dart';
 import 'core/services/daily_notification_service.dart';
-import 'core/services/llm_service.dart';
 import 'core/services/local_quran_asset_service.dart';
 import 'core/services/model_manager.dart';
 import 'core/services/quran_user_session_service.dart';
@@ -91,10 +90,6 @@ Future<void> _warmUpCoreServices() async {
     () => ModelManager.instance.initialize().timeout(
       const Duration(seconds: 5),
     ),
-  ));
-  unawaited(_runStartupTask(
-    'LLM engine init',
-    () => LlmService.instance.initialize(),
   ));
   unawaited(_runStartupTask(
     'daily ayah widget sync',

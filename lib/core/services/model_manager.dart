@@ -29,11 +29,8 @@ class DownloadProgress {
     this.currentFileProgress = 0,
   });
 
-  factory DownloadProgress.zero() => const DownloadProgress(
-        bytesReceived: 0,
-        totalBytes: 0,
-        progress: 0,
-      );
+  factory DownloadProgress.zero() =>
+      const DownloadProgress(bytesReceived: 0, totalBytes: 0, progress: 0);
 }
 
 enum ModelType { asr, tts, llm, embedding }
@@ -70,6 +67,32 @@ class _PlannedDownload {
   });
 }
 
+enum ModelDownloadWriteMode { restart, append }
+
+enum ModelDownloadRangeErrorAction { completePartial, restartDownload }
+
+@immutable
+class ModelDownloadResumePlan {
+  final ModelDownloadWriteMode writeMode;
+  final int startingBytes;
+
+  const ModelDownloadResumePlan._({
+    required this.writeMode,
+    required this.startingBytes,
+  });
+
+  const ModelDownloadResumePlan.restart()
+    : this._(writeMode: ModelDownloadWriteMode.restart, startingBytes: 0);
+
+  const ModelDownloadResumePlan.append(int startingBytes)
+    : this._(
+        writeMode: ModelDownloadWriteMode.append,
+        startingBytes: startingBytes,
+      );
+
+  bool get shouldAppend => writeMode == ModelDownloadWriteMode.append;
+}
+
 class ModelManager {
   ModelManager._();
   static final ModelManager instance = ModelManager._();
@@ -78,6 +101,7 @@ class ModelManager {
   static const _legacyAsrTokenFile = 'base-tokens.txt';
   static const _currentAsrTokenFile = 'tiny.en-tokens.txt';
   static const _llmRuntimeConfigFile = 'llm_config.json';
+  static const _contentRangeHeader = 'content-range';
   static const _llmVisionKeys = <String>{
     'image_mean',
     'image_norm',
@@ -99,14 +123,13 @@ class ModelManager {
   final _progressController = StreamController<DownloadProgress>.broadcast();
   Stream<DownloadProgress> get downloadProgress => _progressController.stream;
 
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 30),
-    receiveTimeout: const Duration(minutes: 10),
-    headers: const {
-      'User-Agent': 'NoorAI/1.0',
-      'Accept': '*/*',
-    },
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(minutes: 10),
+      headers: const {'User-Agent': 'NoorAI/1.0', 'Accept': '*/*'},
+    ),
+  );
 
   // Model definitions
   static const models = <ModelInfo>[
@@ -114,11 +137,7 @@ class ModelManager {
       type: ModelType.asr,
       name: 'Whisper Tiny EN ASR',
       repoId: 'developerabu/whisper-tiny-en-mnn',
-      files: [
-        'encode.mnn',
-        'decode.mnn',
-        'tiny.en-tokens.txt',
-      ],
+      files: ['encode.mnn', 'decode.mnn', 'tiny.en-tokens.txt'],
       subDir: 'whisper',
     ),
     ModelInfo(
@@ -156,10 +175,7 @@ class ModelManager {
       type: ModelType.embedding,
       name: 'BGE Small Embeddings',
       repoId: 'developerabu/bge-small-en-v1.5-mnn',
-      files: [
-        'model.mnn',
-        'tokenizer.json',
-      ],
+      files: ['model.mnn', 'tokenizer.json'],
       subDir: 'embedding',
     ),
   ];
@@ -296,7 +312,10 @@ class ModelManager {
   }
 
   /// Download a specific model from HuggingFace
-  Future<void> downloadModel(ModelInfo model, {CancelToken? cancelToken}) async {
+  Future<void> downloadModel(
+    ModelInfo model, {
+    CancelToken? cancelToken,
+  }) async {
     _invalidateModelStatusCache();
     final downloads = await _buildPendingDownloads(model: model);
     await _runDownloads(downloads, cancelToken: cancelToken);
@@ -316,7 +335,105 @@ class ModelManager {
     _modelStatusFuture = null;
   }
 
-  Future<List<_PlannedDownload>> _buildPendingDownloads({ModelInfo? model}) async {
+  @visibleForTesting
+  static int? parseRemoteFileSizeFromHeaders({
+    String? contentRange,
+    String? contentLength,
+    String? linkedSize,
+  }) {
+    final rangedTotal = _parseContentRangeTotal(contentRange);
+    if (rangedTotal != null && rangedTotal != '*') {
+      final parsed = int.tryParse(rangedTotal);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    final linked = int.tryParse((linkedSize ?? '').trim());
+    if (linked != null) {
+      return linked;
+    }
+
+    return int.tryParse((contentLength ?? '').trim());
+  }
+
+  @visibleForTesting
+  static ModelDownloadResumePlan resolveResumePlan({
+    required int existingBytes,
+    required int? statusCode,
+    String? contentRange,
+  }) {
+    if (existingBytes <= 0 || statusCode == 200) {
+      return const ModelDownloadResumePlan.restart();
+    }
+
+    if (statusCode != 206) {
+      throw Exception(
+        'Unexpected HTTP status for resumable download: $statusCode',
+      );
+    }
+
+    final rangeStart = _parseContentRangeStart(contentRange);
+    if (rangeStart == null) {
+      throw Exception(
+        'Partial download response is missing a valid Content-Range header',
+      );
+    }
+
+    if (rangeStart == existingBytes) {
+      return ModelDownloadResumePlan.append(existingBytes);
+    }
+
+    if (rangeStart == 0) {
+      return const ModelDownloadResumePlan.restart();
+    }
+
+    throw Exception(
+      'Server resumed from unexpected offset $rangeStart (expected $existingBytes)',
+    );
+  }
+
+  @visibleForTesting
+  static ModelDownloadRangeErrorAction resolveRangeNotSatisfiableAction({
+    required int existingBytes,
+    String? contentRange,
+  }) {
+    final remoteBytes = parseRemoteFileSizeFromHeaders(
+      contentRange: contentRange,
+      contentLength: null,
+      linkedSize: null,
+    );
+    if (remoteBytes != null && existingBytes == remoteBytes) {
+      return ModelDownloadRangeErrorAction.completePartial;
+    }
+    return ModelDownloadRangeErrorAction.restartDownload;
+  }
+
+  static int? _parseContentRangeStart(String? contentRange) {
+    final match = RegExp(
+      r'^bytes\s+(\d+)-\d+\/(\d+|\*)$',
+    ).firstMatch(contentRange?.trim() ?? '');
+    return int.tryParse(match?.group(1) ?? '');
+  }
+
+  static String? _parseContentRangeTotal(String? contentRange) {
+    final trimmed = contentRange?.trim() ?? '';
+    final partialMatch = RegExp(
+      r'^bytes\s+\d+-\d+\/(\d+|\*)$',
+    ).firstMatch(trimmed);
+    if (partialMatch != null) {
+      return partialMatch.group(1);
+    }
+
+    final unsatisfiedMatch = RegExp(
+      r'^bytes\s+\*\/(\d+|\*)$',
+    ).firstMatch(trimmed);
+    return unsatisfiedMatch?.group(1);
+  }
+
+  Future<List<_PlannedDownload>> _buildPendingDownloads({
+    ModelInfo? model,
+  }) async {
     await initialize();
 
     final downloads = <_PlannedDownload>[];
@@ -344,7 +461,16 @@ class ModelManager {
         if (await targetFile.exists() && await targetFile.length() > 0) {
           final existingBytes = await targetFile.length();
           if (expectedBytes != null && existingBytes == expectedBytes) {
+            await _deleteIfExists(tempFile);
             debugPrint('ModelManager: Skipping ${entry.name}/$file (complete)');
+            continue;
+          }
+
+          if (expectedBytes == null) {
+            await _deleteIfExists(tempFile);
+            debugPrint(
+              'ModelManager: Skipping ${entry.name}/$file (present, remote size unknown)',
+            );
             continue;
           }
 
@@ -359,7 +485,9 @@ class ModelManager {
           final partialBytes = await tempFile.length();
           if (partialBytes == expectedBytes) {
             await tempFile.rename(targetFile.path);
-            debugPrint('ModelManager: Recovered completed partial ${entry.name}/$file');
+            debugPrint(
+              'ModelManager: Recovered completed partial ${entry.name}/$file',
+            );
             continue;
           }
 
@@ -368,13 +496,15 @@ class ModelManager {
           }
         }
 
-        downloads.add(_PlannedDownload(
-          model: entry,
-          file: file,
-          targetFile: targetFile,
-          url: url,
-          expectedBytes: expectedBytes,
-        ));
+        downloads.add(
+          _PlannedDownload(
+            model: entry,
+            file: file,
+            targetFile: targetFile,
+            url: url,
+            expectedBytes: expectedBytes,
+          ),
+        );
       }
     }
 
@@ -393,23 +523,28 @@ class ModelManager {
 
     final expectedTokenFile = File('${dir.path}/$_currentAsrTokenFile');
     final legacyTokenFile = File('${dir.path}/$_legacyAsrTokenFile');
-    final hasExpectedToken = await expectedTokenFile.exists() &&
+    final hasExpectedToken =
+        await expectedTokenFile.exists() &&
         await expectedTokenFile.length() > 0;
-    final hasLegacyToken = await legacyTokenFile.exists() &&
-        await legacyTokenFile.length() > 0;
+    final hasLegacyToken =
+        await legacyTokenFile.exists() && await legacyTokenFile.length() > 0;
 
     if (hasLegacyToken && !hasExpectedToken) {
       await _deleteIfExists(File('${dir.path}/encode.mnn'));
       await _deleteIfExists(File('${dir.path}/decode.mnn'));
       await _deleteIfExists(expectedTokenFile);
       await _deleteIfExists(legacyTokenFile);
-      debugPrint('ModelManager: Cleared legacy ASR bundle to migrate to whisper-tiny-en-mnn');
+      debugPrint(
+        'ModelManager: Cleared legacy ASR bundle to migrate to whisper-tiny-en-mnn',
+      );
       return;
     }
 
     if (hasLegacyToken && hasExpectedToken) {
       await _deleteIfExists(legacyTokenFile);
-      debugPrint('ModelManager: Removed legacy ASR token file after tiny model migration');
+      debugPrint(
+        'ModelManager: Removed legacy ASR token file after tiny model migration',
+      );
     }
   }
 
@@ -442,8 +577,12 @@ class ModelManager {
         return;
       }
 
-      await configFile.writeAsString(const JsonEncoder.withIndent('  ').convert(decoded));
-      debugPrint('ModelManager: Sanitized llm_config.json for text-only runtime');
+      await configFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(decoded),
+      );
+      debugPrint(
+        'ModelManager: Sanitized llm_config.json for text-only runtime',
+      );
     } catch (error) {
       debugPrint('ModelManager: Failed to sanitize llm_config.json: $error');
     }
@@ -460,14 +599,16 @@ class ModelManager {
     CancelToken? cancelToken,
   }) async {
     if (downloads.isEmpty) {
-      _progressController.add(const DownloadProgress(
-        bytesReceived: 0,
-        totalBytes: 0,
-        progress: 1,
-        completedFiles: 0,
-        totalFiles: 0,
-        currentFileProgress: 1,
-      ));
+      _progressController.add(
+        const DownloadProgress(
+          bytesReceived: 0,
+          totalBytes: 0,
+          progress: 1,
+          completedFiles: 0,
+          totalFiles: 0,
+          currentFileProgress: 1,
+        ),
+      );
       return;
     }
 
@@ -477,16 +618,18 @@ class ModelManager {
     for (final download in downloads) {
       debugPrint('ModelManager: Downloading ${download.url}');
 
-      _progressController.add(DownloadProgress(
-        bytesReceived: 0,
-        totalBytes: 0,
-        progress: completedFiles / totalFiles,
-        currentFile: download.file,
-        modelName: download.model.name,
-        completedFiles: completedFiles,
-        totalFiles: totalFiles,
-        currentFileProgress: 0,
-      ));
+      _progressController.add(
+        DownloadProgress(
+          bytesReceived: 0,
+          totalBytes: 0,
+          progress: completedFiles / totalFiles,
+          currentFile: download.file,
+          modelName: download.model.name,
+          completedFiles: completedFiles,
+          totalFiles: totalFiles,
+          currentFileProgress: 0,
+        ),
+      );
 
       await _downloadPlannedFile(
         download,
@@ -495,23 +638,26 @@ class ModelManager {
         cancelToken: cancelToken,
       );
 
-      if (!await download.targetFile.exists() || await download.targetFile.length() == 0) {
+      if (!await download.targetFile.exists() ||
+          await download.targetFile.length() == 0) {
         throw Exception(
           'Downloaded file is empty: ${download.model.name}/${download.file}',
         );
       }
 
       completedFiles += 1;
-      _progressController.add(DownloadProgress(
-        bytesReceived: 0,
-        totalBytes: 0,
-        progress: completedFiles / totalFiles,
-        currentFile: download.file,
-        modelName: download.model.name,
-        completedFiles: completedFiles,
-        totalFiles: totalFiles,
-        currentFileProgress: 1,
-      ));
+      _progressController.add(
+        DownloadProgress(
+          bytesReceived: 0,
+          totalBytes: 0,
+          progress: completedFiles / totalFiles,
+          currentFile: download.file,
+          modelName: download.model.name,
+          completedFiles: completedFiles,
+          totalFiles: totalFiles,
+          currentFileProgress: 1,
+        ),
+      );
     }
   }
 
@@ -520,13 +666,16 @@ class ModelManager {
       final response = await _dio.head<void>(
         url,
         options: Options(
-          validateStatus: (status) => status != null && status >= 200 && status < 400,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 400,
         ),
       );
 
-      final headerValue = response.headers.value(Headers.contentLengthHeader) ??
-          response.headers.value('x-linked-size');
-      return int.tryParse(headerValue ?? '');
+      return parseRemoteFileSizeFromHeaders(
+        contentRange: response.headers.value(_contentRangeHeader),
+        contentLength: response.headers.value(Headers.contentLengthHeader),
+        linkedSize: response.headers.value('x-linked-size'),
+      );
     } catch (error) {
       debugPrint('ModelManager: Failed to fetch remote size for $url: $error');
       return null;
@@ -541,7 +690,6 @@ class ModelManager {
   }) async {
     final tempFile = File('${download.targetFile.path}.part');
     final existingBytes = await tempFile.exists() ? await tempFile.length() : 0;
-    final expectedBytes = download.expectedBytes ?? 0;
 
     final response = await _dio.get<ResponseBody>(
       download.url,
@@ -549,17 +697,76 @@ class ModelManager {
       options: Options(
         responseType: ResponseType.stream,
         headers: existingBytes > 0 ? {'Range': 'bytes=$existingBytes-'} : null,
-        validateStatus: (status) => status == 200 || status == 206,
+        validateStatus: (status) =>
+            status == 200 || status == 206 || status == 416,
       ),
     );
+
+    if (response.statusCode == 416) {
+      if (existingBytes <= 0) {
+        throw Exception(
+          'Server rejected full download request for ${download.model.name}/${download.file}',
+        );
+      }
+
+      final action = resolveRangeNotSatisfiableAction(
+        existingBytes: existingBytes,
+        contentRange: response.headers.value(_contentRangeHeader),
+      );
+
+      if (action == ModelDownloadRangeErrorAction.completePartial) {
+        if (await download.targetFile.exists()) {
+          await download.targetFile.delete();
+        }
+        await tempFile.rename(download.targetFile.path);
+        debugPrint(
+          'ModelManager: Recovered completed partial ${download.model.name}/${download.file} '
+          'after a 416 response',
+        );
+        return;
+      }
+
+      await _deleteIfExists(tempFile);
+      debugPrint(
+        'ModelManager: Restarting ${download.model.name}/${download.file} from byte 0 '
+        'after a 416 response rejected the stored resume offset',
+      );
+      await _downloadPlannedFile(
+        download,
+        completedFiles: completedFiles,
+        totalFiles: totalFiles,
+        cancelToken: cancelToken,
+      );
+      return;
+    }
 
     final responseBody = response.data;
     if (responseBody == null) {
       throw Exception('Download response body missing for ${download.file}');
     }
 
+    final effectiveExpectedBytes =
+        download.expectedBytes ??
+        parseRemoteFileSizeFromHeaders(
+          contentRange: response.headers.value(_contentRangeHeader),
+          contentLength: response.headers.value(Headers.contentLengthHeader),
+          linkedSize: response.headers.value('x-linked-size'),
+        );
+    final resumePlan = resolveResumePlan(
+      existingBytes: existingBytes,
+      statusCode: response.statusCode,
+      contentRange: response.headers.value(_contentRangeHeader),
+    );
+
+    if (existingBytes > 0 && !resumePlan.shouldAppend) {
+      debugPrint(
+        'ModelManager: Restarting ${download.model.name}/${download.file} from byte 0 '
+        'because the server did not honor the requested resume offset',
+      );
+    }
+
     final sink = tempFile.openWrite(
-      mode: existingBytes > 0 ? FileMode.append : FileMode.write,
+      mode: resumePlan.shouldAppend ? FileMode.append : FileMode.write,
     );
 
     var receivedThisSession = 0;
@@ -568,21 +775,26 @@ class ModelManager {
         sink.add(chunk);
         receivedThisSession += chunk.length;
 
-        final bytesReceived = existingBytes + receivedThisSession;
-        final totalBytes = expectedBytes > 0 ? expectedBytes : bytesReceived;
-        final currentFileProgress = totalBytes > 0 ? bytesReceived / totalBytes : 0.0;
-        final overallProgress = (completedFiles + currentFileProgress) / totalFiles;
+        final bytesReceived = resumePlan.startingBytes + receivedThisSession;
+        final totalBytes = effectiveExpectedBytes ?? bytesReceived;
+        final currentFileProgress = totalBytes > 0
+            ? bytesReceived / totalBytes
+            : 0.0;
+        final overallProgress =
+            (completedFiles + currentFileProgress) / totalFiles;
 
-        _progressController.add(DownloadProgress(
-          bytesReceived: bytesReceived,
-          totalBytes: totalBytes,
-          progress: overallProgress.clamp(0.0, 1.0),
-          currentFile: download.file,
-          modelName: download.model.name,
-          completedFiles: completedFiles,
-          totalFiles: totalFiles,
-          currentFileProgress: currentFileProgress.clamp(0.0, 1.0),
-        ));
+        _progressController.add(
+          DownloadProgress(
+            bytesReceived: bytesReceived,
+            totalBytes: totalBytes,
+            progress: overallProgress.clamp(0.0, 1.0),
+            currentFile: download.file,
+            modelName: download.model.name,
+            completedFiles: completedFiles,
+            totalFiles: totalFiles,
+            currentFileProgress: currentFileProgress.clamp(0.0, 1.0),
+          ),
+        );
       }
     } finally {
       await sink.flush();
@@ -590,10 +802,11 @@ class ModelManager {
     }
 
     final finalBytes = await tempFile.length();
-    if (download.expectedBytes != null && finalBytes != download.expectedBytes) {
+    if (effectiveExpectedBytes != null &&
+        finalBytes != effectiveExpectedBytes) {
       throw Exception(
         'Downloaded file incomplete: ${download.model.name}/${download.file} '
-        '($finalBytes/${download.expectedBytes} bytes)',
+        '($finalBytes/$effectiveExpectedBytes bytes)',
       );
     }
 

@@ -55,6 +55,11 @@ class LlmService {
       // startup touches that collection path.
       if (defaultTargetPlatform == TargetPlatform.android) {
         await VectorStoreService.instance.initialize();
+        if (VectorStoreService.instance.usesNativeZvec) {
+          _initialized = true;
+          debugPrint('LlmService: Init OK (shared native runtime)');
+          return true;
+        }
       }
 
       final modelDir = ModelManager.instance.modelPath(ModelType.llm);

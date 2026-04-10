@@ -50,11 +50,12 @@ class _PostsFeedPageState extends State<PostsFeedPage>
       _communityError = null;
     });
     try {
-      final posts =
-          await QuranUserSyncService.instance.fetchCommunityFeed(limit: 30);
+      final posts = await QuranUserSyncService.instance.fetchCommunityFeed(
+        limit: 30,
+      );
       if (mounted) {
         setState(() {
-          _communityPosts = posts;
+          _communityPosts = List<QFPost>.of(posts);
           _isLoadingCommunity = false;
         });
       }
@@ -78,11 +79,10 @@ class _PostsFeedPageState extends State<PostsFeedPage>
       _myError = null;
     });
     try {
-      final posts =
-          await QuranUserSyncService.instance.listPosts(limit: 50);
+      final posts = await QuranUserSyncService.instance.listPosts(limit: 50);
       if (mounted) {
         setState(() {
-          _myPosts = posts;
+          _myPosts = List<QFPost>.of(posts);
           _isLoadingMy = false;
         });
       }
@@ -101,8 +101,10 @@ class _PostsFeedPageState extends State<PostsFeedPage>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Delete reflection?',
-            style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          'Delete reflection?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: const Text(
           'This will permanently remove the reflection from QuranReflect.',
           style: TextStyle(color: AppColors.textSecondary),
@@ -114,8 +116,10 @@ class _PostsFeedPageState extends State<PostsFeedPage>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
@@ -127,19 +131,19 @@ class _PostsFeedPageState extends State<PostsFeedPage>
     if (!mounted) return;
     if (ok) {
       setState(() {
-        _myPosts.removeWhere((p) => p.id == post.id);
+        _myPosts = _myPosts.where((p) => p.id != post.id).toList();
         _deletingId = null;
       });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-            const SnackBar(content: Text('Reflection deleted')));
+        ..showSnackBar(const SnackBar(content: Text('Reflection deleted')));
     } else {
       setState(() => _deletingId = null);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-            content: Text('Could not delete. Try again.')));
+        ..showSnackBar(
+          const SnackBar(content: Text('Could not delete. Try again.')),
+        );
     }
   }
 
@@ -164,14 +168,11 @@ class _PostsFeedPageState extends State<PostsFeedPage>
                 children: [
                   Text(
                     'Reflections',
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineMedium
-                        ?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                        ),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                   const Spacer(),
                   SizedBox(
@@ -240,8 +241,7 @@ class _PostsFeedPageState extends State<PostsFeedPage>
   Widget _buildCommunityTab(double bottomPadding) {
     if (_isLoadingCommunity) {
       return const Center(
-        child: CircularProgressIndicator(
-            color: AppColors.gold, strokeWidth: 2),
+        child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2),
       );
     }
     if (_communityError != null) {
@@ -251,8 +251,7 @@ class _PostsFeedPageState extends State<PostsFeedPage>
       return _buildEmptyView(
         icon: Icons.forum_outlined,
         title: 'No reflections yet',
-        subtitle:
-            'Community reflections from QuranReflect will appear here.',
+        subtitle: 'Community reflections from QuranReflect will appear here.',
       );
     }
 
@@ -265,9 +264,8 @@ class _PostsFeedPageState extends State<PostsFeedPage>
         padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding + 88),
         itemCount: _communityPosts.length,
         separatorBuilder: (_, itemIndex) => const SizedBox(height: 10),
-        itemBuilder: (context, i) => _CommunityPostCard(
-          post: _communityPosts[i],
-        ),
+        itemBuilder: (context, i) =>
+            _CommunityPostCard(post: _communityPosts[i]),
       ),
     );
   }
@@ -279,8 +277,7 @@ class _PostsFeedPageState extends State<PostsFeedPage>
     if (!isSignedIn) return _buildSignInPrompt();
     if (_isLoadingMy) {
       return const Center(
-        child: CircularProgressIndicator(
-            color: AppColors.gold, strokeWidth: 2),
+        child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2),
       );
     }
     if (_myError != null) {
@@ -320,12 +317,12 @@ class _PostsFeedPageState extends State<PostsFeedPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cloud_off_rounded,
-              size: 48, color: AppColors.textMuted),
+          Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.textMuted),
           const SizedBox(height: 12),
-          Text(message,
-              style: TextStyle(
-                  color: AppColors.textMuted, fontSize: 14)),
+          Text(
+            message,
+            style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+          ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: onRetry,
@@ -362,18 +359,19 @@ class _PostsFeedPageState extends State<PostsFeedPage>
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 13,
-                  height: 1.5),
+                color: AppColors.textMuted,
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
           ],
         ),
@@ -396,25 +394,29 @@ class _PostsFeedPageState extends State<PostsFeedPage>
                 color: AppColors.gold06,
                 border: Border.all(color: AppColors.gold15),
               ),
-              child: const Icon(Icons.lock_outline_rounded,
-                  size: 32, color: AppColors.gold),
+              child: const Icon(
+                Icons.lock_outline_rounded,
+                size: 32,
+                color: AppColors.gold,
+              ),
             ),
             const SizedBox(height: 20),
             Text(
               'Sign in to see your reflections',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Connect your Quran Foundation account to share reflections on QuranReflect.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 13,
-                  height: 1.5),
+                color: AppColors.textMuted,
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -425,9 +427,12 @@ class _PostsFeedPageState extends State<PostsFeedPage>
                 backgroundColor: AppColors.gold,
                 foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 24, vertical: 12),
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ],
@@ -446,8 +451,7 @@ class _CommunityPostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr =
-        DateFormat('MMM d, yyyy').format(post.createdAt.toLocal());
+    final dateStr = DateFormat('MMM d, yyyy').format(post.createdAt.toLocal());
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -468,8 +472,11 @@ class _CommunityPostCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: AppColors.gold10,
                 ),
-                child: const Icon(Icons.person_outline_rounded,
-                    size: 14, color: AppColors.gold),
+                child: const Icon(
+                  Icons.person_outline_rounded,
+                  size: 14,
+                  color: AppColors.gold,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -487,7 +494,9 @@ class _CommunityPostCard extends StatelessWidget {
               Text(
                 dateStr,
                 style: const TextStyle(
-                    color: AppColors.textMuted, fontSize: 11),
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                ),
               ),
             ],
           ),
@@ -508,23 +517,27 @@ class _CommunityPostCard extends StatelessWidget {
               spacing: 6,
               runSpacing: 4,
               children: post.verseRanges
-                  .map((r) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold10,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.gold20),
+                  .map(
+                    (r) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold10,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.gold20),
+                      ),
+                      child: Text(
+                        r,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: AppColors.gold,
+                          fontWeight: FontWeight.w600,
                         ),
-                        child: Text(
-                          r,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: AppColors.gold,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ))
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
           ],
@@ -551,8 +564,9 @@ class _MyPostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('MMM d, yyyy • h:mm a')
-        .format(post.createdAt.toLocal());
+    final dateStr = DateFormat(
+      'MMM d, yyyy • h:mm a',
+    ).format(post.createdAt.toLocal());
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -573,15 +587,20 @@ class _MyPostCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: AppColors.gold10,
                 ),
-                child: const Icon(Icons.auto_awesome_rounded,
-                    size: 13, color: AppColors.gold),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 13,
+                  color: AppColors.gold,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   dateStr,
                   style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 11),
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
                 ),
               ),
               if (isDeleting)
@@ -589,7 +608,9 @@ class _MyPostCard extends StatelessWidget {
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppColors.error),
+                    strokeWidth: 2,
+                    color: AppColors.error,
+                  ),
                 )
               else
                 SizedBox(
@@ -597,8 +618,7 @@ class _MyPostCard extends StatelessWidget {
                   height: 30,
                   child: IconButton(
                     onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline_rounded,
-                        size: 16),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
                     color: AppColors.textMuted,
                     padding: EdgeInsets.zero,
                     tooltip: 'Delete',
