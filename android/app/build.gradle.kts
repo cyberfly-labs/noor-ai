@@ -1,7 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
 import org.gradle.api.GradleException
-import org.gradle.api.tasks.Copy
 
 val nativeAbi = "arm64-v8a"
 val nativeLibName = "libedgemind_core.so"
@@ -112,22 +111,39 @@ flutter {
 afterEvaluate {
     listOf("debug", "profile", "release").forEach { variant ->
         val capitalizedVariant = variant.capitalizeAscii()
-        val syncTask = tasks.register<Copy>("sync${capitalizedVariant}EdgemindCoreJniLib") {
+        val syncTask = tasks.register("sync${capitalizedVariant}EdgemindCoreJniLib") {
             group = "build"
             description = "Copies the rebuilt $nativeLibName into src/main/jniLibs for $variant."
             dependsOn("externalNativeBuild${capitalizedVariant}")
-            into(layout.projectDirectory.dir("src/main/jniLibs/$nativeAbi"))
-            from({
-                val cxxDir = layout.buildDirectory.dir("intermediates/cxx/$variant").get().asFile
-                val matches = fileTree(cxxDir) {
-                    include("**/obj/$nativeAbi/$nativeLibName")
-                }.files
+            doLast {
+                val candidateRoots = listOf(
+                    layout.buildDirectory.dir("intermediates/cxx/$variant").get().asFile,
+                    layout.buildDirectory.dir("intermediates/cmake/$variant").get().asFile,
+                    rootProject.layout.buildDirectory.dir("app/intermediates/cxx/$variant").get().asFile,
+                    rootProject.layout.buildDirectory.dir("app/intermediates/cmake/$variant").get().asFile,
+                ).distinct()
+
+                val matches = candidateRoots
+                    .filter { it.exists() }
+                    .flatMap { root ->
+                        fileTree(root) {
+                            include("**/obj/$nativeAbi/$nativeLibName")
+                        }.files
+                    }
+
                 val newestMatch = matches.maxByOrNull { it.lastModified() }
                     ?: throw GradleException(
-                        "Could not find rebuilt $nativeLibName for $variant under ${cxxDir.absolutePath}."
+                        buildString {
+                            append("Could not find rebuilt $nativeLibName for $variant. Looked under: ")
+                            append(candidateRoots.joinToString { it.absolutePath })
+                        }
                     )
-                newestMatch
-            })
+
+                copy {
+                    from(newestMatch)
+                    into(layout.projectDirectory.dir("src/main/jniLibs/$nativeAbi"))
+                }
+            }
         }
 
         tasks.named("merge${capitalizedVariant}NativeLibs").configure {
