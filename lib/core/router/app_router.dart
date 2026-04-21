@@ -12,6 +12,29 @@ import '../../features/quran/pages/quran_page.dart';
 import '../../features/quran/pages/surah_detail_page.dart';
 import '../../features/settings/pages/settings_page.dart';
 import '../../features/shell/shell_page.dart';
+import '../../features/tools/duas/duas_page.dart';
+import '../../features/tools/fasting/fasting_tracker_page.dart';
+import '../../features/tools/hifz/hifz_tracker_page.dart';
+import '../../features/tools/hijri_calendar/hijri_calendar_page.dart';
+import '../../features/tools/iftar/iftar_countdown_page.dart';
+import '../../features/tools/juz/juz_index_page.dart';
+import '../../features/tools/mosque_finder/mosque_finder_page.dart';
+import '../../features/tools/names/names_of_allah_page.dart';
+import '../../features/tools/prayer_times/prayer_times_page.dart';
+import '../../features/tools/qibla/qibla_page.dart';
+import '../../features/tools/adhkar/adhkar_page.dart';
+import '../../features/tools/reading_plan/reading_plan_page.dart';
+import '../../features/tools/reflections/reflections_feed_page.dart';
+import '../../features/tools/salah/salah_tracker_page.dart';
+import '../../features/tools/seerah/seerah_page.dart';
+import '../../features/tools/tasbih/tasbih_page.dart';
+import '../../features/tools/tools_hub_page.dart';
+import '../../features/tools/zakat/zakat_page.dart';
+import '../../features/tools/achievements/achievements_page.dart';
+import '../../features/tools/quizzes/islamic_quiz_page.dart';
+import '../../features/tools/reminders/smart_reminders_page.dart';
+import '../../features/tools/stories/quran_stories_page.dart';
+import '../../features/tools/tajweed/tajweed_page.dart';
 import '../../features/verse/pages/verse_detail_page.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -91,6 +114,101 @@ final appRouter = GoRouter(
           path: '/settings',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: SettingsPage()),
+        ),
+        GoRoute(
+          path: '/tools',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ToolsHubPage()),
+          routes: [
+            GoRoute(
+              path: 'qibla',
+              builder: (context, state) => const QiblaPage(),
+            ),
+            GoRoute(
+              path: 'prayer-times',
+              builder: (context, state) => const PrayerTimesPage(),
+            ),
+            GoRoute(
+              path: 'tasbih',
+              builder: (context, state) => const TasbihPage(),
+            ),
+            GoRoute(
+              path: 'hijri',
+              builder: (context, state) => const HijriCalendarPage(),
+            ),
+            GoRoute(
+              path: 'names',
+              builder: (context, state) => const NamesOfAllahPage(),
+            ),
+            GoRoute(
+              path: 'duas',
+              builder: (context, state) => const DuasPage(),
+            ),
+            GoRoute(
+              path: 'zakat',
+              builder: (context, state) => const ZakatPage(),
+            ),
+            GoRoute(
+              path: 'fasting',
+              builder: (context, state) => const FastingTrackerPage(),
+            ),
+            GoRoute(
+              path: 'mosques',
+              builder: (context, state) => const MosqueFinderPage(),
+            ),
+            GoRoute(
+              path: 'adhkar',
+              builder: (context, state) => const AdhkarPage(),
+            ),
+            GoRoute(
+              path: 'salah',
+              builder: (context, state) => const SalahTrackerPage(),
+            ),
+            GoRoute(
+              path: 'reading-plan',
+              builder: (context, state) => const ReadingPlanPage(),
+            ),
+            GoRoute(
+              path: 'hifz',
+              builder: (context, state) => const HifzTrackerPage(),
+            ),
+            GoRoute(
+              path: 'seerah',
+              builder: (context, state) => const SeerahPage(),
+            ),
+            GoRoute(
+              path: 'ramadan',
+              builder: (context, state) => const IftarCountdownPage(),
+            ),
+            GoRoute(
+              path: 'juz',
+              builder: (context, state) => const JuzIndexPage(),
+            ),
+            GoRoute(
+              path: 'reflections',
+              builder: (context, state) => const ReflectionsFeedPage(),
+            ),
+            GoRoute(
+              path: 'stories',
+              builder: (context, state) => const QuranStoriesPage(),
+            ),
+            GoRoute(
+              path: 'quiz',
+              builder: (context, state) => const IslamicQuizPage(),
+            ),
+            GoRoute(
+              path: 'tajweed',
+              builder: (context, state) => const TajweedPage(),
+            ),
+            GoRoute(
+              path: 'achievements',
+              builder: (context, state) => const AchievementsPage(),
+            ),
+            GoRoute(
+              path: 'reminders',
+              builder: (context, state) => const SmartRemindersPage(),
+            ),
+          ],
         ),
       ],
     ),

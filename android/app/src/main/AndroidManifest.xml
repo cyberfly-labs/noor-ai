@@ -8,6 +8,8 @@
     <!-- USE_EXACT_ALARM: auto-granted for alarm/reminder apps on API 33+ -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="Noor AI"
         android:name="${applicationName}"

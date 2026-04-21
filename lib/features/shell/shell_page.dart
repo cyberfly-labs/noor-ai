@@ -22,9 +22,7 @@ class _ShellPageState extends State<ShellPage> {
     '/home',
     '/quran',
     '/chat',
-    '/daily-ayah',
-    '/bookmarks',
-    '/posts',
+    '/tools',
     '/settings',
   ];
 
@@ -58,30 +56,26 @@ class _ShellPageState extends State<ShellPage> {
             decoration: AppColors.navBarDecoration,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: Row(
-                    children: List.generate(_routes.length, (index) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: _NavItem(
-                          icon: _iconFor(index, false),
-                          activeIcon: _iconFor(index, true),
-                          label: _labelFor(index),
-                          isSelected: _currentIndex == index,
-                          onTap: () {
-                            if (index != _currentIndex) {
-                              HapticFeedback.selectionClick();
-                              setState(() => _currentIndex = index);
-                              context.go(_routes[index]);
-                            }
-                          },
-                        ),
-                      );
-                    }),
-                  ),
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(_routes.length, (index) {
+                    return Expanded(
+                      child: _NavItem(
+                        icon: _iconFor(index, false),
+                        activeIcon: _iconFor(index, true),
+                        label: _labelFor(index),
+                        isSelected: _currentIndex == index,
+                        onTap: () {
+                          if (index != _currentIndex) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _currentIndex = index);
+                            context.go(_routes[index]);
+                          }
+                        },
+                      ),
+                    );
+                  }),
                 ),
               ),
             ),
@@ -94,20 +88,14 @@ class _ShellPageState extends State<ShellPage> {
   IconData _iconFor(int index, bool active) {
     switch (index) {
       case 0:
-        return active ? Icons.mic_rounded : Icons.mic_none_rounded;
+        return active ? Icons.home_rounded : Icons.home_outlined;
       case 1:
         return active ? Icons.menu_book_rounded : Icons.menu_book_outlined;
       case 2:
         return active ? Icons.chat_rounded : Icons.chat_outlined;
       case 3:
-        return active
-            ? Icons.auto_stories_rounded
-            : Icons.auto_stories_outlined;
+        return active ? Icons.apps_rounded : Icons.apps_outlined;
       case 4:
-        return active ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded;
-      case 5:
-        return active ? Icons.forum_rounded : Icons.forum_outlined;
-      case 6:
         return active ? Icons.settings_rounded : Icons.settings_outlined;
       default:
         return Icons.circle;
@@ -117,18 +105,14 @@ class _ShellPageState extends State<ShellPage> {
   String _labelFor(int index) {
     switch (index) {
       case 0:
-        return 'Ask';
+        return 'Home';
       case 1:
         return 'Quran';
       case 2:
         return 'Chat';
       case 3:
-        return 'Daily';
+        return 'Tools';
       case 4:
-        return 'Saved';
-      case 5:
-        return 'Reflect';
-      case 6:
         return 'Settings';
       default:
         return '';
@@ -159,8 +143,8 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        constraints: const BoxConstraints(minWidth: 74),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
         decoration: isSelected
             ? BoxDecoration(
                 color: AppColors.gold10,

@@ -311,14 +311,15 @@ MNNR_Engine mnnr_create_engine(const char *model_path,
     return nullptr;
   }
 
-  auto engine = new MNNREngine();
+  // RAII: automatically cleans up on early return / exception. Only released
+  // to the caller on success at the end of the function.
+  auto engine = std::make_unique<MNNREngine>();
 
   // Load interpreter
   engine->interpreter.reset(MNN::Interpreter::createFromFile(model_path));
   if (!engine->interpreter) {
     if (error_code)
       *error_code = MNNR_ERROR_MODEL_LOAD_FAILED;
-    delete engine;
     return nullptr;
   }
 
@@ -330,7 +331,6 @@ MNNR_Engine mnnr_create_engine(const char *model_path,
   if (!engine->session) {
     if (error_code)
       *error_code = MNNR_ERROR_RUNTIME;
-    delete engine;
     return nullptr;
   }
 
@@ -356,7 +356,7 @@ MNNR_Engine mnnr_create_engine(const char *model_path,
 
   if (error_code)
     *error_code = MNNR_SUCCESS;
-  return engine;
+  return engine.release();
 }
 
 MNNR_Engine mnnr_create_engine_from_buffer(const void *buffer,
@@ -369,7 +369,7 @@ MNNR_Engine mnnr_create_engine_from_buffer(const void *buffer,
     return nullptr;
   }
 
-  auto engine = new MNNREngine();
+  auto engine = std::make_unique<MNNREngine>();
 
   // Load interpreter from buffer
   engine->interpreter.reset(
@@ -377,7 +377,6 @@ MNNR_Engine mnnr_create_engine_from_buffer(const void *buffer,
   if (!engine->interpreter) {
     if (error_code)
       *error_code = MNNR_ERROR_MODEL_LOAD_FAILED;
-    delete engine;
     return nullptr;
   }
 
@@ -389,7 +388,6 @@ MNNR_Engine mnnr_create_engine_from_buffer(const void *buffer,
   if (!engine->session) {
     if (error_code)
       *error_code = MNNR_ERROR_RUNTIME;
-    delete engine;
     return nullptr;
   }
 
@@ -411,7 +409,7 @@ MNNR_Engine mnnr_create_engine_from_buffer(const void *buffer,
 
   if (error_code)
     *error_code = MNNR_SUCCESS;
-  return engine;
+  return engine.release();
 }
 
 void mnnr_destroy_engine(MNNR_Engine engine) {
@@ -548,12 +546,12 @@ MNNR_SessionPool mnnr_create_session_pool(const char *model_path,
     return nullptr;
   }
 
-  auto pool = new MNNRSessionPool();
+  // RAII: pool is only released to the caller on full success.
+  auto pool = std::make_unique<MNNRSessionPool>();
 
   // Load interpreter
   pool->interpreter.reset(MNN::Interpreter::createFromFile(model_path));
   if (!pool->interpreter) {
-    delete pool;
     return nullptr;
   }
 
@@ -561,6 +559,7 @@ MNNR_SessionPool mnnr_create_session_pool(const char *model_path,
   configure_schedule(pool->schedule_config, pool->backend_config, config);
 
   // Create sessions
+  pool->all_sessions.reserve(static_cast<size_t>(pool_size));
   for (int i = 0; i < pool_size; i++) {
     auto *session = pool->interpreter->createSession(pool->schedule_config);
     if (session) {
@@ -570,11 +569,10 @@ MNNR_SessionPool mnnr_create_session_pool(const char *model_path,
   }
 
   if (pool->all_sessions.empty()) {
-    delete pool;
     return nullptr;
   }
 
-  return pool;
+  return pool.release();
 }
 
 void mnnr_destroy_session_pool(MNNR_SessionPool pool) {
@@ -1056,7 +1054,8 @@ static bool parse_tokenizer_json(const std::string &path, MNNREmbedding *emb) {
     auto &added = doc["added_tokens"];
     for (rapidjson::SizeType i = 0; i < added.Size(); i++) {
       if (added[i].IsObject() && added[i].HasMember("content") &&
-          added[i].HasMember("id")) {
+          added[i].HasMember("id") && added[i]["content"].IsString() &&
+          added[i]["id"].IsInt()) {
         emb->vocab[added[i]["content"].GetString()] = added[i]["id"].GetInt();
       }
     }
@@ -1284,13 +1283,15 @@ uint32_t mnnr_embedding_load(MNNR_Embedding embedding) {
   LOGI("=== Embedding model INPUT tensors (%zu) ===", input_map.size());
   for (auto &kv : input_map) {
     auto shape = kv.second->shape();
-    std::string shape_str = "[";
+    std::string shape_str;
+    shape_str.reserve(2 + shape.size() * 6);
+    shape_str.push_back('[');
     for (int i = 0; i < (int)shape.size(); i++) {
       if (i > 0)
-        shape_str += ", ";
-      shape_str += std::to_string(shape[i]);
+        shape_str.append(", ");
+      shape_str.append(std::to_string(shape[i]));
     }
-    shape_str += "]";
+    shape_str.push_back(']');
     LOGI("  INPUT: '%s' shape=%s", kv.first.c_str(), shape_str.c_str());
   }
 
@@ -1299,13 +1300,15 @@ uint32_t mnnr_embedding_load(MNNR_Embedding embedding) {
   LOGI("=== Embedding model OUTPUT tensors (%zu) ===", output_map.size());
   for (auto &kv : output_map) {
     auto shape = kv.second->shape();
-    std::string shape_str = "[";
+    std::string shape_str;
+    shape_str.reserve(2 + shape.size() * 6);
+    shape_str.push_back('[');
     for (int i = 0; i < (int)shape.size(); i++) {
       if (i > 0)
-        shape_str += ", ";
-      shape_str += std::to_string(shape[i]);
+        shape_str.append(", ");
+      shape_str.append(std::to_string(shape[i]));
     }
-    shape_str += "]";
+    shape_str.push_back(']');
     LOGI("  OUTPUT: '%s' shape=%s", kv.first.c_str(), shape_str.c_str());
   }
 

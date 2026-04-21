@@ -278,11 +278,15 @@ static void clear_source_index() {
 }
 
 // --- Helper Functions ---
-// Helper to allocate strings for Dart to take ownership and eventually free
+// Helper to allocate strings for Dart to take ownership and eventually free.
+// Uses memcpy instead of strcpy for explicit bounds safety (buffer is sized
+// exactly once and length is captured atomically with the copy).
 static const char *allocate_string(const std::string &str) {
-  char *cstr = (char *)malloc(str.length() + 1);
+  const size_t len = str.size();
+  char *cstr = static_cast<char *>(std::malloc(len + 1));
   if (cstr) {
-    std::strcpy(cstr, str.c_str());
+    std::memcpy(cstr, str.data(), len);
+    cstr[len] = '\0';
   }
   return cstr;
 }

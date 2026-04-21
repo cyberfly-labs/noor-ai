@@ -2,9 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/chapter_info.dart';
+import '../models/juz_info.dart';
 import '../models/quran_recitation_resource.dart';
 import '../models/quran_tafsir_resource.dart';
 import '../models/quran_translation_resource.dart';
+import '../models/reflection_post.dart';
 import '../models/verse.dart';
 import '../models/surah.dart';
 import 'local_quran_asset_service.dart';
@@ -423,6 +425,65 @@ class QuranApiService {
           .toList(growable: false);
     } catch (e) {
       debugPrint('QuranAPI: Failed to list recitation resources: $e');
+      return const [];
+    }
+  }
+
+  // ── Juzs ──
+
+  /// Fetches the list of all 30 Juzs with their verse mappings.
+  Future<List<JuzInfo>> listJuzs() async {
+    final config = await _getConfig();
+    if (!config.usesQuranFoundation) {
+      return const [];
+    }
+
+    try {
+      final response = await _quranFoundationGet('/juzs', config: config);
+      final data = _mapFromData(response.data);
+      final juzs = _listFromData(data?['juzs']);
+      return juzs
+          .map((item) => JuzInfo.fromJson((item as Map).cast<String, dynamic>()))
+          .where((j) => j.juzNumber > 0)
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('QuranAPI: Failed to list juzs: $e');
+      return const [];
+    }
+  }
+
+  // ── Reflections Feed (Quran Reflect) ──
+
+  /// Fetches the Quran Reflect community feed (lessons & reflections).
+  /// [page] is 1-based.
+  Future<List<ReflectionPost>> fetchReflectionsFeed({
+    int page = 1,
+    int perPage = 20,
+    String language = 'en',
+  }) async {
+    final config = await _getConfig();
+    if (!config.usesQuranFoundation) {
+      return const [];
+    }
+
+    try {
+      final response = await _quranFoundationGet(
+        '/posts/feed',
+        config: config,
+        queryParameters: <String, dynamic>{
+          'page': page,
+          'per_page': perPage,
+          'language': language,
+        },
+      );
+      final data = _mapFromData(response.data);
+      final posts = _listFromData(data?['posts'] ?? data?['data']);
+      return posts
+          .whereType<Map>()
+          .map((item) => ReflectionPost.fromJson(item.cast<String, dynamic>()))
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('QuranAPI: Failed to fetch reflections feed: $e');
       return const [];
     }
   }

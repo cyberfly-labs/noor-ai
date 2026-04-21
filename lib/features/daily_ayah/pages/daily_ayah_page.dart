@@ -8,6 +8,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:animate_do/animate_do.dart';
 
 import '../../../core/models/verse.dart';
+import '../../../core/services/verse_share_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../bookmarks/providers/bookmarks_provider.dart';
 import '../providers/daily_ayah_provider.dart';
@@ -409,14 +410,77 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
   }
 
   Future<void> _shareVerse(Verse verse) async {
-    final shareText =
-        '${verse.verseKey}\n\n${verse.arabicText ?? ''}\n\n${verse.translationText ?? ''}';
-    await Clipboard.setData(ClipboardData(text: shareText));
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Verse copied to clipboard for sharing.')),
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.dividerAlpha60,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.image_rounded, color: AppColors.gold),
+              title: const Text('Share as image',
+                  style: TextStyle(color: AppColors.textPrimary)),
+              subtitle: const Text('Generate a styled verse card',
+                  style: TextStyle(color: AppColors.textMuted)),
+              onTap: () => Navigator.of(ctx).pop('image'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.text_snippet_rounded,
+                  color: AppColors.gold),
+              title: const Text('Share as text',
+                  style: TextStyle(color: AppColors.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop('text'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_rounded, color: AppColors.gold),
+              title: const Text('Copy to clipboard',
+                  style: TextStyle(color: AppColors.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop('copy'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
+    if (choice == null) return;
+    final arabic = verse.arabicText ?? '';
+    final translation = verse.translationText;
+    final reference = verse.verseKey;
+    if (choice == 'image') {
+      await VerseShareService.shareAsImage(
+        arabic: arabic,
+        translation: translation,
+        reference: reference,
+      );
+    } else if (choice == 'text') {
+      await VerseShareService.shareAsText(
+        arabic: arabic,
+        translation: translation,
+        reference: reference,
+      );
+    } else {
+      final shareText =
+          '$reference\n\n$arabic\n\n${translation ?? ''}';
+      await Clipboard.setData(ClipboardData(text: shareText));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verse copied to clipboard.')),
+      );
+    }
   }
 
   Future<void> _toggleBookmark(Verse verse) async {

@@ -11,6 +11,7 @@ import 'core/services/daily_notification_service.dart';
 import 'core/services/local_quran_asset_service.dart';
 import 'core/services/model_manager.dart';
 import 'core/services/quran_user_session_service.dart';
+import 'core/services/smart_reminders_service.dart';
 import 'core/services/vector_store_service.dart' show VectorStoreService, kEmotionalVerses;
 
 AppLifecycleListener? _appLifecycleListener;
@@ -98,6 +99,10 @@ Future<void> _warmUpCoreServices() async {
   unawaited(_runStartupTask(
     'daily notification init',
     DailyNotificationService.instance.initialize,
+  ));
+  unawaited(_runStartupTask(
+    'smart reminders init',
+    SmartRemindersService.instance.initialize,
   ));
 }
 

@@ -18,6 +18,7 @@
 #include <cstring>
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -149,7 +150,9 @@ ZvecStatus zvec_create_collection(const char *path, const char *name,
   }
 
   LOGI("Created and opened collection at %s", path);
-  *out = new ZvecCollectionImpl{result.value()};
+  *out = new (std::nothrow) ZvecCollectionImpl{result.value()};
+  if (!*out)
+    return ZVEC_ERROR_INTERNAL;
   return ZVEC_OK;
 }
 
@@ -174,7 +177,9 @@ ZvecStatus zvec_open_collection(const char *path, ZvecCollection *out) {
       auto read_only_result = zvec::Collection::Open(path, read_only_options);
       if (read_only_result.has_value()) {
         LOGI("Opened collection at %s in read-only mode", path);
-        *out = new ZvecCollectionImpl{read_only_result.value()};
+        *out = new (std::nothrow) ZvecCollectionImpl{read_only_result.value()};
+        if (!*out)
+          return ZVEC_ERROR_INTERNAL;
         return ZVEC_OK;
       }
 
@@ -191,7 +196,9 @@ ZvecStatus zvec_open_collection(const char *path, ZvecCollection *out) {
   }
 
   LOGI("Opened collection at %s", path);
-  *out = new ZvecCollectionImpl{result.value()};
+  *out = new (std::nothrow) ZvecCollectionImpl{result.value()};
+  if (!*out)
+    return ZVEC_ERROR_INTERNAL;
   return ZVEC_OK;
 }
 
