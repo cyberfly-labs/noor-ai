@@ -217,46 +217,66 @@ class _HomePageState extends ConsumerState<HomePage> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
                   child: Row(
                     children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.surfaceLight,
-                        ),
-                        child: const Icon(
-                          Icons.person_rounded,
-                          size: 20,
-                          color: AppColors.textSecondary,
+                      GestureDetector(
+                        onTap: () => context.go('/settings'),
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.surfaceLight,
+                            border: Border.all(
+                              color: AppColors.divider,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            size: 18,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                       const Spacer(),
-                      Text(
-                        'Noor AI',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppColors.gold,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                          fontSize: 22,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 16,
+                            color: AppColors.gold,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Noor AI',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(
+                                  color: AppColors.gold,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                  fontSize: 20,
+                                ),
+                          ),
+                        ],
                       ),
                       const Spacer(),
                       IconButton(
-                        onPressed: () => context.go('/settings'),
+                        onPressed: () => context.go('/bookmarks'),
                         icon: const Icon(
-                          Icons.settings_outlined,
-                          color: AppColors.gold,
+                          Icons.bookmark_outline_rounded,
+                          color: AppColors.textSecondary,
                           size: 22,
                         ),
+                        tooltip: 'Bookmarks',
                       ),
                     ],
                   ),
                 ),
 
-                Expanded(child: _buildResponseArea(state)),
+                Expanded(child: RepaintBoundary(child: _buildResponseArea(state))),
 
                 if (!keyboardOpen &&
                     state.transcription != null &&
@@ -331,7 +351,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 Container(
                   padding: EdgeInsets.fromLTRB(
                     16,
-                    8,
+                    10,
                     16,
                     keyboardOpen ? 12 : 12 + bottomPadding,
                   ),
@@ -345,7 +365,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                           decoration: BoxDecoration(
                             color: AppColors.surfaceLight,
                             borderRadius: BorderRadius.circular(28),
-                            border: Border.all(color: AppColors.divider),
+                            border: Border.all(
+                              color: AppColors.divider,
+                              width: 0.8,
+                            ),
                           ),
                           child: TextField(
                             controller: _textController,
@@ -366,8 +389,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                               focusedBorder: InputBorder.none,
                               suffixIcon: _hasInputText
                                   ? IconButton(
-                                      onPressed: () => _textController.clear(),
-                                      icon: Icon(
+                                      onPressed: () =>
+                                          _textController.clear(),
+                                      icon: const Icon(
                                         Icons.close_rounded,
                                         size: 18,
                                         color: AppColors.textMuted,
@@ -377,18 +401,21 @@ class _HomePageState extends ConsumerState<HomePage> {
                                   : null,
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 20,
-                                vertical: 12,
+                                vertical: 13,
                               ),
                             ),
-                            onSubmitted: isStopActionVisible ? null : _sendText,
+                            onSubmitted: isStopActionVisible
+                                ? null
+                                : _sendText,
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        width: 44,
-                        height: 44,
+                        curve: Curves.easeOutCubic,
+                        width: 46,
+                        height: 46,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isStopActionVisible
@@ -398,7 +425,21 @@ class _HomePageState extends ConsumerState<HomePage> {
                               : AppColors.surfaceLight,
                           border: isStopActionVisible || _hasInputText
                               ? null
-                              : Border.all(color: AppColors.divider),
+                              : Border.all(
+                                  color: AppColors.divider,
+                                  width: 0.8,
+                                ),
+                          boxShadow: _hasInputText && !isStopActionVisible
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.gold.withValues(
+                                      alpha: 0.3,
+                                    ),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : null,
                         ),
                         child: IconButton(
                           onPressed: isStopActionVisible
@@ -520,13 +561,13 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget _buildFeelingChooser() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Hero branding
           _buildHeroBranding(),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
           // Quick suggestions
           Padding(
@@ -535,15 +576,16 @@ class _HomePageState extends ConsumerState<HomePage> {
               'TRY ASKING',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: AppColors.textMuted,
-                letterSpacing: 2,
-                fontWeight: FontWeight.w600,
+                letterSpacing: 1.8,
+                fontWeight: FontWeight.w700,
+                fontSize: 10,
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: 8,
+            runSpacing: 8,
             children: _suggestedPrompts
                 .map(
                   (item) => _quickPromptChip(
@@ -554,11 +596,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 )
                 .toList(growable: false),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
           // Action grid
           _buildActionGrid(),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
           // Feelings section
           _buildFeelingsSection(),
@@ -567,29 +609,95 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 5) return 'Good night';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    if (hour < 21) return 'Good evening';
+    return 'Good night';
+  }
+
   Widget _buildHeroBranding() {
-    return Center(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.cardHighlight,
+            AppColors.card,
+            AppColors.gold04,
+          ],
+          stops: const [0.0, 0.6, 1.0],
+        ),
+        border: Border.all(color: AppColors.gold14, width: 0.8),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.gold10,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.gold20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 12,
+                      color: AppColors.gold,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Noor AI',
+                      style: const TextStyle(
+                        color: AppColors.gold,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Text(
-            'Divine guidance for your heart',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            _greeting(),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,
-              letterSpacing: 0.3,
             ),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             'Illuminate your path.',
             style: Theme.of(context).textTheme.headlineLarge?.copyWith(
               color: AppColors.textPrimary,
               fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              fontSize: 34,
+              letterSpacing: -0.8,
+              fontSize: 30,
             ),
-            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ask anything from the Quran — by voice or text.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
           ),
         ],
       ),
@@ -604,8 +712,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             icon: Icons.auto_stories_rounded,
             bgIcon: Icons.today_rounded,
             title: 'Daily Ayah',
-            subtitle: 'Verse of the day reflection',
+            subtitle: 'Verse of the day',
             route: '/daily-ayah',
+            accentColor: AppColors.gold,
           ),
         ),
         const SizedBox(width: 12),
@@ -614,8 +723,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             icon: Icons.explore_rounded,
             bgIcon: Icons.menu_book_rounded,
             title: 'Browse Quran',
-            subtitle: 'Explore by Surah & Juz',
+            subtitle: 'Explore by Surah',
             route: '/quran',
+            accentColor: AppColors.accent,
           ),
         ),
       ],
@@ -628,26 +738,47 @@ class _HomePageState extends ConsumerState<HomePage> {
     required String title,
     required String subtitle,
     required String route,
+    required Color accentColor,
   }) {
     return GestureDetector(
       onTap: () => context.go(route),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.cardHighlight, AppColors.card],
+          ),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.18),
+            width: 0.8,
+          ),
         ),
         child: Stack(
           children: [
             Positioned(
-              top: -8,
-              right: -8,
-              child: Icon(bgIcon, size: 56, color: AppColors.textMuted08),
+              top: -6,
+              right: -6,
+              child: Icon(
+                bgIcon,
+                size: 52,
+                color: accentColor.withValues(alpha: 0.06),
+              ),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 28, color: AppColors.gold),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, size: 22, color: accentColor),
+                ),
                 const SizedBox(height: 14),
                 Text(
                   title,
@@ -656,11 +787,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -676,32 +808,38 @@ class _HomePageState extends ConsumerState<HomePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            Container(
+              width: 3,
+              height: 16,
+              decoration: BoxDecoration(
+                gradient: AppColors.goldGradient,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Start with a feeling',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
                   ),
                 ),
-                const SizedBox(height: 4),
                 Text(
                   'Guided wisdom for your emotional state',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
+                    fontSize: 11,
                   ),
                 ),
               ],
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         ..._feelingPrompts.map((item) => _buildFeelingRow(item)),
       ],
     );
@@ -717,23 +855,25 @@ class _HomePageState extends ConsumerState<HomePage> {
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider, width: 0.5),
         ),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(14),
+                color: AppColors.gold08,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: AppColors.gold15),
               ),
-              child: Icon(item.icon, size: 22, color: AppColors.gold),
+              child: Icon(item.icon, size: 20, color: AppColors.gold),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -756,9 +896,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 22,
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
               color: AppColors.textMuted,
             ),
           ],
@@ -1341,18 +1481,26 @@ class _HomePageState extends ConsumerState<HomePage> {
         _sendText(resolvedPrompt);
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.divider, width: 0.5),
         ),
-        child: Text(
-          '"$text"',
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: AppColors.gold65),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );

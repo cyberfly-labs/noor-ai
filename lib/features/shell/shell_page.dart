@@ -51,12 +51,12 @@ class _ShellPageState extends State<ShellPage> {
       extendBody: true,
       bottomNavigationBar: ClipRRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
             decoration: AppColors.navBarDecoration,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: List.generate(_routes.length, (index) {
@@ -92,9 +92,9 @@ class _ShellPageState extends State<ShellPage> {
       case 1:
         return active ? Icons.menu_book_rounded : Icons.menu_book_outlined;
       case 2:
-        return active ? Icons.chat_rounded : Icons.chat_outlined;
+        return active ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded;
       case 3:
-        return active ? Icons.apps_rounded : Icons.apps_outlined;
+        return active ? Icons.grid_view_rounded : Icons.grid_view_outlined;
       case 4:
         return active ? Icons.settings_rounded : Icons.settings_outlined;
       default:
@@ -141,35 +141,55 @@ class _NavItem extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
         decoration: isSelected
             ? BoxDecoration(
-                color: AppColors.gold10,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.gold15),
+                color: AppColors.gold12,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.gold20, width: 0.8),
               )
             : BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.transparent),
               ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              size: 22,
-              color: isSelected ? AppColors.gold : AppColors.textMuted,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: animation,
+                child: child,
+              ),
+              child: Icon(
+                isSelected ? activeIcon : icon,
+                key: ValueKey(isSelected),
+                size: 22,
+                color: isSelected ? AppColors.gold : AppColors.textMuted,
+              ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
+            const SizedBox(height: 3),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 180),
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? AppColors.gold : AppColors.textMuted,
+              ),
+              child: Text(label),
+            ),
+            const SizedBox(height: 1),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: isSelected ? 16 : 0,
+              height: 2,
+              decoration: BoxDecoration(
+                color: AppColors.gold,
+                borderRadius: BorderRadius.circular(1),
               ),
             ),
           ],

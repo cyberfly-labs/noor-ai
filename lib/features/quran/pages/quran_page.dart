@@ -434,8 +434,9 @@ class _QuranPageState extends ConsumerState<QuranPage> {
             'POPULAR PROMPTS',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: AppColors.textMuted,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w600,
+              letterSpacing: 1.8,
+              fontWeight: FontWeight.w700,
+              fontSize: 10,
             ),
           ),
         ),
@@ -452,20 +453,35 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
+                      horizontal: 14,
+                      vertical: 9,
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceLight,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Text(
-                      '"${item.label}"',
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppColors.divider,
+                        width: 0.5,
                       ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 12,
+                          color: AppColors.gold65,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          item.label,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -481,14 +497,15 @@ class _QuranPageState extends ConsumerState<QuranPage> {
             'QUICK JUMP',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: AppColors.textMuted,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w600,
+              letterSpacing: 1.8,
+              fontWeight: FontWeight.w700,
+              fontSize: 10,
             ),
           ),
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 80,
+          height: 84,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _featuredSurahNumbers.length,
@@ -512,8 +529,16 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                   width: 120,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.cardHighlight, AppColors.card],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.gold15,
+                      width: 0.8,
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -523,18 +548,18 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Container(
-                            width: 26,
-                            height: 26,
+                            width: 24,
+                            height: 24,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: AppColors.gold10,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(7),
                             ),
                             child: Text(
                               '${surah.number}',
                               style: const TextStyle(
                                 color: AppColors.gold,
-                                fontSize: 11,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -553,7 +578,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                         style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -573,8 +598,9 @@ class _QuranPageState extends ConsumerState<QuranPage> {
             'ALL SURAHS',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: AppColors.textMuted,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w600,
+              letterSpacing: 1.8,
+              fontWeight: FontWeight.w700,
+              fontSize: 10,
             ),
           ),
         ),
@@ -870,26 +896,28 @@ class _SurahTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider, width: 0.5),
         ),
         child: Row(
           children: [
             // Number badge
             Container(
-              width: 44,
-              height: 44,
+              width: 42,
+              height: 42,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(14),
+                color: AppColors.gold08,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.gold15),
               ),
               child: Text(
                 '${surah.number}',
                 style: const TextStyle(
-                  color: AppColors.textSecondary,
+                  color: AppColors.gold,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
@@ -906,13 +934,37 @@ class _SurahTile extends StatelessWidget {
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    '${surah.englishNameTranslation} · ${surah.numberOfAyahs} ayahs',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  Row(
+                    children: [
+                      Text(
+                        surah.englishNameTranslation,
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 3,
+                        height: 3,
+                        decoration: const BoxDecoration(
+                          color: AppColors.textMuted,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${surah.numberOfAyahs} ayahs',
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -926,11 +978,11 @@ class _SurahTile extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 10),
-            Icon(
+            const SizedBox(width: 8),
+            const Icon(
               Icons.chevron_right_rounded,
-              size: 20,
-              color: AppColors.textMuted40,
+              size: 18,
+              color: AppColors.textMuted,
             ),
           ],
         ),
@@ -956,6 +1008,7 @@ class _VerseResultTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider, width: 0.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -970,6 +1023,7 @@ class _VerseResultTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.gold10,
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.gold20),
                   ),
                   child: Text(
                     verse.verseKey,
@@ -980,19 +1034,10 @@ class _VerseResultTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  'Surah ${verse.surahNumber} · Ayah ${verse.ayahNumber}',
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
                 const Spacer(),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
                   color: AppColors.textMuted,
                 ),
               ],
@@ -1007,7 +1052,7 @@ class _VerseResultTile extends StatelessWidget {
               style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 13,
-                height: 1.5,
+                height: 1.55,
               ),
             ),
           ],

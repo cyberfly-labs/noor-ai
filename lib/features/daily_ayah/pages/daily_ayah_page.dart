@@ -96,26 +96,43 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                     // ── Header row ─────────────────────────
                     Row(
                       children: [
-                        Text(
-                          'Daily Ayah',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                              ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Daily Ayah',
+                              style: Theme.of(context).textTheme.headlineMedium
+                                  ?.copyWith(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.5,
+                                  ),
+                            ),
+                            Text(
+                              'Your verse for today',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                            ),
+                          ],
                         ),
                         const Spacer(),
                         FadeInDown(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
-                              vertical: 6,
+                              vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.gold08,
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.gold12,
+                                  AppColors.gold08,
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.gold15),
+                              border: Border.all(color: AppColors.gold20),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -125,13 +142,22 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                   color: AppColors.gold,
                                   size: 16,
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 5),
                                 Text(
-                                  '${state.streak} day${state.streak == 1 ? '' : 's'}',
+                                  '${state.streak}',
                                   style: const TextStyle(
                                     color: AppColors.gold,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'day${state.streak == 1 ? '' : 's'}',
+                                  style: const TextStyle(
+                                    color: AppColors.gold65,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
                                   ),
                                 ),
                               ],
@@ -150,37 +176,69 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                         duration: const Duration(milliseconds: 400),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(24),
+                          padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
-                            color: AppColors.surfaceLight,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppColors.divider),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppColors.cardHighlight,
+                                AppColors.card,
+                                AppColors.gold04,
+                              ],
+                              stops: const [0.0, 0.55, 1.0],
+                            ),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: AppColors.gold20,
+                              width: 0.8,
+                            ),
                           ),
                           child: Column(
                             children: [
                               // Ornament
-                              Icon(
-                                Icons.auto_awesome_rounded,
-                                size: 20,
-                                color: AppColors.gold40,
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 32,
+                                    height: 1,
+                                    color: AppColors.gold25,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Icon(
+                                    Icons.auto_awesome_rounded,
+                                    size: 16,
+                                    color: AppColors.gold40,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    width: 32,
+                                    height: 1,
+                                    color: AppColors.gold25,
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 24),
 
                               // Arabic text
                               Text(
                                 state.verse!.arabicText ?? '',
                                 style: const TextStyle(
-                                  fontSize: 26,
+                                  fontSize: 28,
                                   color: AppColors.gold,
-                                  height: 2.0,
+                                  height: 2.1,
                                 ),
                                 textDirection: ui.TextDirection.rtl,
                                 textAlign: TextAlign.center,
                               ),
 
-                              const SizedBox(height: 20),
-                              Container(height: 0.5, color: AppColors.divider),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 22),
+                              Container(
+                                height: 0.5,
+                                color: AppColors.gold20,
+                              ),
+                              const SizedBox(height: 18),
 
                               // Translation
                               Text(
@@ -189,22 +247,25 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                   fontSize: 15,
                                   color: AppColors.textSecondary,
                                   fontStyle: FontStyle.italic,
-                                  height: 1.6,
+                                  height: 1.65,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
 
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 18),
 
                               // Verse key pill
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 5,
+                                  horizontal: 14,
+                                  vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.gold10,
-                                  borderRadius: BorderRadius.circular(10),
+                                  color: AppColors.gold12,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: AppColors.gold20,
+                                  ),
                                 ),
                                 child: Text(
                                   state.verse!.verseKey,
@@ -242,6 +303,13 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                 icon: Icons.bookmark_outline_rounded,
                                 label: 'Save',
                                 onTap: () => _toggleBookmark(state.verse!),
+                                isActive: ref
+                                    .watch(bookmarksProvider)
+                                    .bookmarks
+                                    .any(
+                                      (b) =>
+                                          b.verseKey == state.verse!.verseKey,
+                                    ),
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -254,6 +322,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                 onTap: () => ref
                                     .read(dailyAyahProvider.notifier)
                                     .explainVerse(),
+                                isActive: state.explanation != null,
                               ),
                             ),
                           ],
@@ -381,24 +450,33 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    bool isActive = false,
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.divider),
+          color: isActive ? AppColors.gold12 : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isActive ? AppColors.gold25 : AppColors.divider,
+            width: 0.8,
+          ),
         ),
         child: Column(
           children: [
-            Icon(icon, color: AppColors.gold, size: 20),
-            const SizedBox(height: 4),
+            Icon(
+              icon,
+              color: isActive ? AppColors.gold : AppColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(height: 5),
             Text(
               label,
               style: TextStyle(
-                color: AppColors.textMuted,
+                color: isActive ? AppColors.gold : AppColors.textMuted,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
