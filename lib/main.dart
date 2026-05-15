@@ -8,12 +8,9 @@ import 'app.dart';
 import 'core/services/database_service.dart';
 import 'core/services/daily_ayah_widget_service.dart';
 import 'core/services/daily_notification_service.dart';
-import 'core/services/local_quran_asset_service.dart';
 import 'core/services/model_manager.dart';
 import 'core/services/quran_user_session_service.dart';
 import 'core/services/smart_reminders_service.dart';
-import 'core/services/vector_store_service.dart' show VectorStoreService, kEmotionalVerses;
-
 AppLifecycleListener? _appLifecycleListener;
 
 Future<void> main() async {
@@ -46,35 +43,9 @@ Future<void> main() async {
 }
 
 Future<void> _warmUpCoreServices() async {
-  unawaited(_runStartupTask('vector store init', () async {
+  unawaited(_runStartupTask('model manager init', () async {
     await ModelManager.instance.initialize();
-    if (!await ModelManager.instance.areRagModelsDownloaded()) {
-      return 'deferred-until-model-download';
-    }
-
-    await VectorStoreService.instance.initialize();
-    if (await VectorStoreService.instance.hasReadyNativeCorpus()) {
-      return 'bundled-native-corpus-ready';
-    }
-    if (VectorStoreService.instance.usesNativeZvec) {
-      await LocalQuranAssetService.instance.initialize();
-      final built = await VectorStoreService.instance.ensureAndroidNativeCorpusBuilt(
-        loadDocuments: LocalQuranAssetService.instance.loadVectorDocuments,
-        emotionalVerses: kEmotionalVerses,
-      );
-      if (built) {
-        return 'android-native-corpus-built';
-      }
-    }
-    return VectorStoreService.instance.usesNativeZvec
-        ? 'native-runtime-ready-without-bundled-db'
-        : 'in-memory-fallback-ready';
   }));
-
-  unawaited(_runStartupTask(
-    'local Quran asset init',
-    LocalQuranAssetService.instance.initialize,
-  ));
 
   unawaited(_runStartupTask(
     'database init',
@@ -112,6 +83,7 @@ Future<void> _runStartupTask(
 ) async {
   try {
     await action();
+    return null;
   } catch (error) {
     debugPrint('Startup: $label skipped: $error');
   }

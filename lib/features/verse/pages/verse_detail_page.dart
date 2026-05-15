@@ -27,8 +27,7 @@ class VerseDetailPage extends ConsumerStatefulWidget {
 
 class _VerseDetailPageState extends ConsumerState<VerseDetailPage> {
   late final Future<_VerseDetailData> _detailFuture;
-  Future<String?>? _tafsirTranslationFuture;
-  String? _tafsirTranslationSource;
+
 
   @override
   void initState() {
@@ -276,73 +275,6 @@ class _VerseDetailPageState extends ConsumerState<VerseDetailPage> {
                     ],
                   ),
                 ),
-
-                // ── Tafsir Translation ───────────────────
-                if (_translationFutureFor(detail.tafsirText)
-                    case final translationFuture?) ...[
-                  const SizedBox(height: 24),
-                  _SectionLabel(label: 'Tafsir Translation'),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.divider, width: 0.5),
-                    ),
-                    child: FutureBuilder<String?>(
-                      future: translationFuture,
-                      builder: (context, translationSnapshot) {
-                        if (translationSnapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return Row(
-                            children: [
-                              const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.gold,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Translating tafsir...',
-                                style: TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          );
-                        }
-
-                        final translationText =
-                            translationSnapshot.data?.trim() ?? '';
-                        if (translationText.isEmpty) {
-                          return const Text(
-                            'Translation is not available for this tafsir right now.',
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 14,
-                              height: 1.6,
-                            ),
-                          );
-                        }
-
-                        return Text(
-                          translationText,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 14,
-                            height: 1.65,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
               ],
             ),
           );
@@ -423,44 +355,6 @@ class _VerseDetailPageState extends ConsumerState<VerseDetailPage> {
     );
   }
 
-  Future<String?>? _translationFutureFor(String? tafsirText) {
-    final text = tafsirText?.trim() ?? '';
-    if (text.isEmpty || !_containsArabic(text)) {
-      _tafsirTranslationSource = null;
-      _tafsirTranslationFuture = null;
-      return null;
-    }
-
-    if (_tafsirTranslationSource == text &&
-        _tafsirTranslationFuture != null) {
-      return _tafsirTranslationFuture;
-    }
-
-    _tafsirTranslationSource = text;
-    _tafsirTranslationFuture = _translateTafsirIfNeeded(text);
-    return _tafsirTranslationFuture;
-  }
-
-  Future<String?> _translateTafsirIfNeeded(String? tafsirText) async {
-    final text = tafsirText?.trim() ?? '';
-    if (text.isEmpty || !_containsArabic(text)) return null;
-
-    try {
-      final translated = await LlmService.instance
-          .generateComplete(
-            PromptTemplates.translateTafsirText(tafsirText: text),
-          )
-          .timeout(const Duration(seconds: 15));
-      final normalized = translated.trim();
-      if (normalized.isEmpty || normalized == text) return null;
-      return normalized;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  bool _containsArabic(String text) =>
-      RegExp(r'[\u0600-\u06FF]').hasMatch(text);
 }
 
 class _SectionLabel extends StatelessWidget {

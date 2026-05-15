@@ -1,4 +1,4 @@
-import '../services/vector_store_service.dart' show EmotionalVerse, kEmotionalVerses;
+import '../models/emotional_verse.dart';
 
 class EmotionalVerseSelector {
   EmotionalVerseSelector._();

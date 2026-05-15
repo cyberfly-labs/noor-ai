@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_theme.dart';
 import 'adhkar_data.dart';
@@ -16,15 +17,35 @@ class _AdhkarPageState extends State<AdhkarPage>
   late TabController _tab;
   late List<int> _morningProgress;
   late List<int> _eveningProgress;
+  SharedPreferences? _prefs;
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
-    // Default to evening after noon.
     if (DateTime.now().hour >= 12) _tab.index = 1;
     _morningProgress = List.filled(morningAdhkar.length, 0);
     _eveningProgress = List.filled(eveningAdhkar.length, 0);
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _prefs = p;
+      for (int i = 0; i < morningAdhkar.length; i++) {
+        _morningProgress[i] = p.getInt('adhkar.morning.$i') ?? 0;
+      }
+      for (int i = 0; i < eveningAdhkar.length; i++) {
+        _eveningProgress[i] = p.getInt('adhkar.evening.$i') ?? 0;
+      }
+    });
+  }
+
+  Future<void> _saveProgress(bool isMorning, int index, int value) async {
+    final key = isMorning ? 'adhkar.morning.$index' : 'adhkar.evening.$index';
+    await _prefs?.setInt(key, value);
   }
 
   @override
@@ -63,25 +84,27 @@ class _AdhkarPageState extends State<AdhkarPage>
       body: TabBarView(
         controller: _tab,
         children: [
-          _list(morningAdhkar, _morningProgress),
-          _list(eveningAdhkar, _eveningProgress),
+          _list(morningAdhkar, _morningProgress, isMorning: true),
+          _list(eveningAdhkar, _eveningProgress, isMorning: false),
         ],
       ),
     );
   }
 
-  Widget _list(List<Adhkar> items, List<int> progress) {
+  Widget _list(List<Adhkar> items, List<int> progress, {required bool isMorning}) {
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(
           16, 12, 16, MediaQuery.of(context).padding.bottom + 80),
       itemCount: items.length,
       itemBuilder: (_, i) => _card(items[i], progress[i], () {
-        setState(() {
-          if (progress[i] < items[i].count) progress[i] += 1;
-        });
-        HapticFeedback.lightImpact();
+        if (progress[i] < items[i].count) {
+          setState(() => progress[i] += 1);
+          _saveProgress(isMorning, i, progress[i]);
+          HapticFeedback.lightImpact();
+        }
       }, () {
         setState(() => progress[i] = 0);
+        _saveProgress(isMorning, i, 0);
       }),
     );
   }

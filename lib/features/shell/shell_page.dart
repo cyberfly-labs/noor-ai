@@ -22,6 +22,7 @@ class _ShellPageState extends State<ShellPage> {
     '/home',
     '/quran',
     '/chat',
+    '/posts',
     '/tools',
     '/settings',
   ];
@@ -33,9 +34,10 @@ class _ShellPageState extends State<ShellPage> {
   }
 
   void _syncIndex() {
-    final location = GoRouterState.of(context).uri.toString();
+    final location = GoRouterState.of(context).uri.path;
     for (int i = 0; i < _routes.length; i++) {
-      if (location.startsWith(_routes[i])) {
+      final route = _routes[i];
+      if (location == route || location.startsWith('$route/')) {
         if (_currentIndex != i) {
           setState(() => _currentIndex = i);
         }
@@ -92,10 +94,14 @@ class _ShellPageState extends State<ShellPage> {
       case 1:
         return active ? Icons.menu_book_rounded : Icons.menu_book_outlined;
       case 2:
-        return active ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded;
+        return active
+            ? Icons.chat_bubble_rounded
+            : Icons.chat_bubble_outline_rounded;
       case 3:
-        return active ? Icons.grid_view_rounded : Icons.grid_view_outlined;
+        return active ? Icons.article_rounded : Icons.article_outlined;
       case 4:
+        return active ? Icons.grid_view_rounded : Icons.grid_view_outlined;
+      case 5:
         return active ? Icons.settings_rounded : Icons.settings_outlined;
       default:
         return Icons.circle;
@@ -111,8 +117,10 @@ class _ShellPageState extends State<ShellPage> {
       case 2:
         return 'Chat';
       case 3:
-        return 'Tools';
+        return 'Reflect';
       case 4:
+        return 'Tools';
+      case 5:
         return 'Settings';
       default:
         return '';
@@ -160,10 +168,8 @@ class _NavItem extends StatelessWidget {
           children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
-              transitionBuilder: (child, animation) => ScaleTransition(
-                scale: animation,
-                child: child,
-              ),
+              transitionBuilder: (child, animation) =>
+                  ScaleTransition(scale: animation, child: child),
               child: Icon(
                 isSelected ? activeIcon : icon,
                 key: ValueKey(isSelected),

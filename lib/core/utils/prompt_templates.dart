@@ -1,18 +1,16 @@
 import '../models/surah.dart';
 
 /// Prompt templates for the on-device LLM (Qwen3.5-0.8B)
+/// Optimized for speed and grounding accuracy.
 class PromptTemplates {
   PromptTemplates._();
 
-  /// Core identity prefix shared by all Noor prompts.
+  /// Core identity prefix - shortened for faster prompt processing.
   static const String _noorIdentity =
-      'You are Noor AI, a Quran and Tafsir assistant. '
-      'Answer only from the supplied evidence. Prefer Quran first, then Tafsir. '
-      'Cite exact verse references. Attribute tafsir to its source. '
-      'Do not fabricate or speculate. '
-      'If a sentence is not directly supported by the supplied Quran or Tafsir evidence, do not say it. '
-      'If evidence is insufficient, say: "I could not find this in the provided sources." '
-      'Match the user language. Respond in plain text without markdown.';
+      'You are Noor AI. Answer ONLY from supplied evidence. '
+      'Prefer Quran, then Tafsir. Cite exact references. Do not speculate. '
+      'If evidence missing, say: "I could not find this in the sources." '
+      'Match user language. Plain text, no markdown.';
 
   /// Explain a Quran verse using only the supplied translation and tafsir
   static String explainVerse({
@@ -29,33 +27,25 @@ class PromptTemplates {
         ? '\n[TAFSIR]\nSource: $sourceLabel\nText: $tafsirText'
         : '';
     final arabicBlock = arabicText.isNotEmpty
-        ? '\n[QURAN]\nText (Arabic): $arabicText\nTranslation: $translationText'
+        ? '\n[QURAN]\nText: $arabicText\nTranslation: $translationText'
         : '\n[QURAN]\nTranslation: $translationText';
 
     return '''$_noorIdentity
 
-Explain this Quran verse using ONLY the source material below.
-$verseKey
+Explain verse $verseKey using ONLY:
 $arabicBlock$tafsirBlock
 
 Rules:
-- The Quran quote is shown separately in the UI, so do not repeat the full translation.
-- Cite $verseKey once.
-- Attribute tafsir points to $sourceLabel.
-- Do not add outside knowledge or rulings.
-- Every sentence must be directly supported by the supplied Quran verse or tafsir text.
-- Keep the explanation compact and avoid repeating any word, phrase, sentence, or idea.
-- If the source does not address something, say so.
-- Keep the total answer under 90 words.
+- 3-4 short sentences. Grounded only.
+- Cite $verseKey. Attribute tafsir to $sourceLabel.
+- No outside knowledge. No markdown.
 
-Structure your response EXACTLY as:
+Structure:
 📚 Explanation:
-[3-4 short grounded sentences.]
+[Grounded sentences]
 
 ✨ Summary:
-[1 short takeaway sentence.]
-
-Match the user's language. Do not repeat.''';
+[Short takeaway]''';
   }
 
   static String dailyAyahExplanation({
@@ -72,25 +62,16 @@ Match the user's language. Do not repeat.''';
         ? '\n[TAFSIR]\nSource: $sourceLabel\nText: $tafsirText'
         : '';
     final arabicBlock = arabicText.isNotEmpty
-        ? '\n[QURAN]\nVerse: $verseKey\nText (Arabic): $arabicText\nTranslation: $translationText'
+        ? '\n[QURAN]\nVerse: $verseKey\nTranslation: $translationText'
         : '\n[QURAN]\nVerse: $verseKey\nTranslation: $translationText';
 
     return '''$_noorIdentity
 
-Explain Daily Ayah verse $verseKey using ONLY the source material below.
+Explain Daily Ayah $verseKey using:
 $arabicBlock$tafsirBlock
 
-Rules:
-- Return only the explanation in plain text prose.
-- Do not use headings, labels, bullet points, markdown, emoji, brackets, or placeholders.
-- Mention $verseKey once.
-- If you use tafsir points, attribute them to $sourceLabel.
-- Keep it to 4-6 short sentences.
-- Every sentence must be directly supported by the supplied Quran translation or tafsir text.
-- Do not repeat the prompt. Do not copy instructions. Do not output template text.
-- If the evidence is limited, say that plainly.
-
-Return only the explanation.''';
+Return ONLY 4-6 sentences. Prose only. No labels or markdown.
+Every sentence must be directly supported. Attribute to $sourceLabel.''';
   }
 
   /// Explain the theme/overview of a surah
@@ -101,23 +82,17 @@ Return only the explanation.''';
   }) {
     return '''$_noorIdentity
 
-Give an overview of Surah $surahName (Chapter $surahNumber) based on the verse below.
-
-First verse: $firstVerseTranslation
+Overview of Surah $surahName ($surahNumber) based on:
+$surahNumber:1 - $firstVerseTranslation
 
 Rules:
-- Ground every claim in the verse provided. Do not fabricate additional verses or hadith.
-- Cite verse references (e.g. $surahNumber:1) when making specific points.
-- Do not give fatwas or speculate on rulings.
-- If the provided material is insufficient, acknowledge it openly.
-- Match the user's language.
+- Ground every claim in this verse. Cite $surahNumber:1.
+- No speculation. Match user language.
 
-Structure your answer as:
-1. Theme: The central theme visible in this verse (2-3 sentences).
-2. Key Messages: 2-3 messages directly supported by the provided text.
-3. Significance: Why this surah is important in Quran and Muslim life (2 sentences).
-
-Write 12-18 sentences total. Each sentence must add new information.''';
+Structure:
+1. Theme (2 sentences)
+2. Key Messages (2 sentences)
+3. Significance (1 sentence)''';
   }
 
   static String groundedSurahOverview({
@@ -129,31 +104,20 @@ Write 12-18 sentences total. Each sentence must add new information.''';
 
     return '''$_noorIdentity
 
-Create an overview of Surah $surahName (Chapter $surahNumber) using ONLY the retrieved source material below.
-
-Retrieved source evidence:
+Overview of Surah $surahName ($surahNumber) using ONLY:
 $evidenceText
 
 Rules:
-- Use ONLY the supplied [QURAN] and [TAFSIR] blocks — no outside knowledge.
-- The Quran quote is shown separately in the UI, so do not repeat long verse quotations.
-- Attribute tafsir points to the retrieved source.
-- This is a partial sample — never claim to cover the entire surah.
-- Cite verse references when making specific points.
-- Every sentence must be directly supported by the retrieved Quran or tafsir evidence.
-- Do not give fatwas or speculate.
-- If the evidence is insufficient, say: "I could not find this in the provided Quran or Tafsir المصادر."
-- Match the user's language.
-- Keep the total answer under 140 words.
+- Use ONLY supplied blocks. No outside info.
+- Cite verse keys. Attribute tafsir.
+- Keep total under 100 words.
 
-Structure your response EXACTLY as:
+Structure:
 📚 Explanation:
-[5-7 short grounded sentences.]
+[5 short grounded sentences]
 
 ✨ Summary:
-[1 short sentence on the central theme.]
-
-Do not repeat.''';
+[1 sentence theme]''';
   }
 
   /// Emotional guidance based on user's feeling
@@ -163,7 +127,7 @@ Do not repeat.''';
     required List<String> verseReferences,
     required List<String> verseTranslations,
   }) {
-    final slotCount = verseReferences.length.clamp(1, 3);
+    final slotCount = verseReferences.length.clamp(1, 2); // Reduced for speed
     final verseEvidence = List.generate(slotCount, (i) {
       final key = verseReferences[i];
       final fill =
@@ -173,66 +137,50 @@ Do not repeat.''';
       return '- $key: $fill';
     }).join('\n');
     final explanationSlots = List.generate(slotCount, (i) {
-      return '- ${verseReferences[i]}: [1 short grounded sentence on how this verse comforts someone feeling $emotion]';
+      return '- ${verseReferences[i]}: [Grounded comfort]';
     }).join('\n');
 
     return '''$_noorIdentity
 
-The user is going through a difficult time. They are experiencing: $emotion
-They said: "$userText"
-
-Use ONLY these verses:
+User feeling $emotion: "$userText"
+Use ONLY these:
 $verseEvidence
 
 Rules:
-- The Quran quotes are shown separately in the UI, so do not repeat them verbatim.
-- Every comforting point must be grounded in the verses shown.
-- Mention each verse key once in the explanation section.
-- Do not copy any verse text into the Explanation, Comfort, or Summary sections.
-- Do not give fatwas or religious rulings.
-- Match the user's language.
-- Keep the total answer under 120 words.
+- Compassionate but grounded.
+- Mention verse keys once.
+- No markdown. Under 90 words.
 
-Structure your response EXACTLY as:
+Structure:
 📚 Explanation:
-[Write only fresh comforting explanation lines in this format; do not quote the verse text.]
 $explanationSlots
 
 🤍 Comfort:
-[2 short grounded sentences of reassurance.]
+[2 grounded sentences]
 
 ✨ Summary:
-[1 short hopeful sentence.]
-
-Be compassionate. Do not skip any verse slot.''';
+[1 hopeful sentence]''';
   }
 
-  /// General Quran question (ungrounded fallback — used only when RAG returns nothing)
+  /// General Quran question (ungrounded fallback)
   static String generalQuestion(String question) {
     return '''$_noorIdentity
 
-Answer this question about the Quran or Islam:
-"$question"
+Answer: "$question"
 
 Rules:
-- Quote Quran verses with Surah name and ayah number (e.g. Al-Baqarah 2:255) when relevant.
-- Attribute any scholarly explanation to its source (e.g. "According to Ibn Kathir...").
-- Do NOT give fatwas or speculate on meanings.
-- If uncertain, say so rather than guessing.
-- If the answer cannot be found, say: "I could not find this in the provided Quran or Tafsir المصادر."
-- Match the user's language.
+- Quote relevant verse. Attribute sources.
+- No fatwas. Brief explanation.
 
-Structure your response EXACTLY as:
+Structure:
 📖 Quran:
-[Most relevant verse with Surah name and ayah number. Omit if not applicable.]
+[Reference]
 
 📚 Explanation:
-[Attributed explanation. 6-10 sentences.]
+[4-6 sentences]
 
 ✨ Summary:
-[1-2 sentence takeaway.]
-
-Write 10-16 sentences. Each sentence must add new information.''';
+[1 sentence]''';
   }
 
   static String groundedGeneralQuestion({
@@ -243,157 +191,72 @@ Write 10-16 sentences. Each sentence must add new information.''';
     List<String> verseTranslations = const [],
   }) {
     final evidenceText = evidenceBlocks.join('\n\n');
-    final normalizedRetrievalQuery = retrievalQuery.trim();
-    final retrievalQueryBlock =
-        normalizedRetrievalQuery.isNotEmpty &&
-            normalizedRetrievalQuery != question.trim()
-        ? 'Retrieval query used to fetch the evidence: "$normalizedRetrievalQuery"\n\n'
-        : '';
-
-    final slotCount = verseReferences.length.clamp(1, 3);
+    final slotCount = verseReferences.length.clamp(1, 2); // Reduced for speed
     final explanationSlots = List.generate(slotCount, (i) {
-      return '- ${verseReferences[i]}: [1 short grounded sentence using the evidence]';
+      return '- ${verseReferences[i]}: [1 grounded sentence]';
     }).join('\n');
 
     return '''$_noorIdentity
 
-Answer the user's question using ONLY the retrieved evidence below.
-
 Question: "$question"
-
-$retrievalQueryBlock
-Retrieved source evidence:
+Evidence:
 $evidenceText
 
 Rules:
-- Use ONLY the supplied [QURAN] and [TAFSIR] blocks — no outside knowledge.
-- Interpret every piece of evidence in light of the user's question.
-- Every sentence must be directly supported by the retrieved evidence.
-- The Quran quotes are shown separately in the UI, so do not repeat long translations verbatim.
-- For each [TAFSIR] block: draw on its insights when writing the 📚 Explanation section.
-- Do NOT skip any verse slot in the structure below — fill every one.
-- Do NOT cite any verse not found in the retrieved evidence above.
-- Do NOT give fatwas, speculate, or add personal opinion.
-- If the evidence does not answer the question, say exactly: "I could not find this in the provided Quran or Tafsir المصادر."
-- Match the user's language.
-- Keep the total answer under 140 words.
+- Use ONLY supplied evidence.
+- Do not skip verse slots.
+- No markdown. Under 100 words.
 
-Structure your response EXACTLY as:
+Structure:
 📚 Explanation:
 $explanationSlots
 
-🧭 What This Means For Your Question:
-[Answer the user's question directly in 2 short grounded sentences, referencing the verse keys above.]
+🧭 What This Means:
+[Direct answer, 2 grounded sentences]
 
 ✨ Summary:
-[1 short takeaway sentence directly from the evidence.]
-
-Do not skip any verse slot. Do not repeat sentences.''';
+[1 sentence takeaway]''';
   }
 
   static String rewriteAsrTranscript({required String transcript}) {
     final surahChoices = SurahLookup.promptSurahChoices(transcript: transcript);
 
-    return '''You are correcting speech-to-text output for a Quran companion app.
-
-Original transcript: "$transcript"
-
-Most relevant valid surah names to choose from:
-$surahChoices
+    return '''Fix transcription errors in: "$transcript"
+Valid surahs: $surahChoices
 
 Task:
-- Rewrite only what is necessary to correct Quran-related and Islamic terms.
-- Fix likely mistakes in words such as surah names, ayah, tafsir, Quran, Allah, dua, dhikr, Ramadan, recitation, sajdah, and similar religious terms.
-- If the transcript refers to a surah, choose the closest valid surah name from the list above.
-- Prefer the most related surah name from that list rather than leaving a malformed ASR spelling.
-- Preserve the user's original intent.
-- Preserve verse numbers and references. If the user clearly means a specific surah and ayah, normalize it into a form like "explain ayah 97:2" or "translation of 2:255" when helpful.
-- Example: "Explan Surayasin" -> "explain surah yasin"
-- Example: "Let's play Suram Rukh" -> "explain surah mulk"
-- Do not add explanations, punctuation-heavy formatting, or extra text.
-- If the transcript already looks correct, return it unchanged.
-
-Return only the corrected transcript as a single plain line.''';
+- Fix Islamic terms and surah names.
+- Use closest valid name from list.
+- Return ONLY the corrected plain line. No extra text.''';
   }
 
   static String normalizeVoiceCommand({required String userInput}) {
     final surahChoices = SurahLookup.promptSurahChoices(
       transcript: userInput,
-      maxChoices: 10,
+      maxChoices: 6,
     );
 
-    return '''You are a Quran assistant.
+    return '''Fix transcription in user input.
+Valid surahs: $surahChoices
 
-Fix transcription errors in the user input, especially:
-- Surah names
-- Islamic terms
-
-Most relevant valid surah names to choose from:
-$surahChoices
-
-Return ONLY a JSON object:
-
+Return ONLY JSON:
 {
-  "intent": "...",
-  "surah": "...",
+  "intent": "intent_id",
+  "surah": "name",
   "ayah": number|null,
-  "clean_text": "..."
+  "clean_text": "clean"
 }
 
-Rules:
-- Do NOT hallucinate
-- Use only valid Surah names
-- If the input likely refers to a surah, choose the closest valid surah name from the shortlist above
-- Prefer correcting malformed ASR spellings like "kahaf" -> "kahf", "rahmaan" -> "rahman", "yaseen" -> "yasin", "bakara" -> "baqarah"
-- If unsure, set surah to null
-- Keep it short and accurate
-
-Examples:
-
-Input: sura ik loss explain
-Output:
-{
-  "intent": "explain_surah",
-  "surah": "ikhlas",
-  "ayah": null,
-  "clean_text": "explain surah ikhlas"
-}
-
-Input: play yaseen
-Output:
-{
-  "intent": "play_audio",
-  "surah": "yasin",
-  "ayah": null,
-  "clean_text": "play surah yasin"
-}
-
-Input: bakara 255
-Output:
-{
-  "intent": "explain_ayah",
-  "surah": "baqarah",
-  "ayah": 255,
-  "clean_text": "surah baqarah ayah 255"
-}
-
-Now process this input:
-$userInput''';
+Input: $userInput''';
   }
 
   static String translateTafsirText({required String tafsirText}) {
-    return '''You are translating Quran tafsir into clear English.
-
-Source tafsir:
+    return '''Translate to English:
 $tafsirText
 
 Rules:
-- Translate only the supplied tafsir text.
-- Do not add commentary, summary, headings, or explanations.
-- Preserve Quran references and proper names accurately.
-- Use plain, readable English.
-
-Return only the English translation.''';
+- Clear English. No commentary.
+- Return only the translation.''';
   }
 
   /// Generate a daily ayah reflection
@@ -403,21 +266,11 @@ Return only the English translation.''';
   }) {
     return '''$_noorIdentity
 
-Write a short daily reflection for this verse.
-
-Verse (Arabic): $arabicText
+Daily reflection for:
+Text: $arabicText
 Translation: $translationText
 
-Rules:
-- Ground the reflection strictly in the verse provided — do not add unrelated quotes.
-- Do not give fatwas or speculate on rulings.
-- Match the user's language.
-
-Write 2-3 sentences that:
-- Connect this verse to something meaningful in everyday life.
-- Offer a practical, grounded reminder for the day.
-- Feel warm and personal — like a note from a knowledgeable friend.
-
-Keep it brief and heartfelt.''';
+Write 2-3 grounded, warm sentences. No fatwas. Brief only.''';
   }
 }
+

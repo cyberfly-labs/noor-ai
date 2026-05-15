@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/models/verse.dart';
 import '../../../core/services/verse_share_service.dart';
@@ -80,8 +81,32 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
       body: SafeArea(
         bottom: false,
         child: state.isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.gold),
+            ? _buildLoadingState()
+            : state.verse == null
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: AppColors.textMuted,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Could not load verse.',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => ref
+                          .read(dailyAyahProvider.notifier)
+                          .load(forceRefresh: true),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
               )
             : SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
@@ -111,59 +136,64 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                             Text(
                               'Your verse for today',
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
+                                  ?.copyWith(color: AppColors.textSecondary),
                             ),
                           ],
                         ),
                         const Spacer(),
-                        FadeInDown(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppColors.gold12,
-                                  AppColors.gold08,
+                        IconButton(
+                          icon: const Icon(Icons.refresh_rounded, size: 20),
+                          color: AppColors.textMuted,
+                          tooltip: 'Refresh verse',
+                          onPressed: () => ref
+                              .read(dailyAyahProvider.notifier)
+                              .load(forceRefresh: true),
+                        ),
+                        const SizedBox(width: 4),
+                        if (state.streak > 0)
+                          FadeInDown(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [AppColors.gold12, AppColors.gold08],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: AppColors.gold20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.local_fire_department_rounded,
+                                    color: AppColors.gold,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '${state.streak}',
+                                    style: const TextStyle(
+                                      color: AppColors.gold,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'day${state.streak == 1 ? '' : 's'}',
+                                    style: const TextStyle(
+                                      color: AppColors.gold65,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 11,
+                                    ),
+                                  ),
                                 ],
                               ),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.gold20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.local_fire_department_rounded,
-                                  color: AppColors.gold,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  '${state.streak}',
-                                  style: const TextStyle(
-                                    color: AppColors.gold,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  'day${state.streak == 1 ? '' : 's'}',
-                                  style: const TextStyle(
-                                    color: AppColors.gold65,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
                             ),
                           ),
-                        ),
                       ],
                     ),
 
@@ -234,10 +264,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                               ),
 
                               const SizedBox(height: 22),
-                              Container(
-                                height: 0.5,
-                                color: AppColors.gold20,
-                              ),
+                              Container(height: 0.5, color: AppColors.gold20),
                               const SizedBox(height: 18),
 
                               // Translation
@@ -263,9 +290,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                                 decoration: BoxDecoration(
                                   color: AppColors.gold12,
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: AppColors.gold20,
-                                  ),
+                                  border: Border.all(color: AppColors.gold20),
                                 ),
                                 child: Text(
                                   state.verse!.verseKey,
@@ -315,7 +340,9 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _actionButton(
-                                icon: Icons.auto_awesome_outlined,
+                                icon: state.explanation != null
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.auto_awesome_outlined,
                                 label: state.explanation != null
                                     ? 'Hide'
                                     : 'Explain',
@@ -328,6 +355,26 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
                           ],
                         ),
                       ),
+
+                    // ── View in Quran button ───────────────
+                    if (state.verse != null) ...[
+                      const SizedBox(height: 12),
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 350),
+                        duration: const Duration(milliseconds: 400),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              final surahNumber = state.verse!.surahNumber;
+                              context.push('/quran/surah/$surahNumber');
+                            },
+                            icon: const Icon(Icons.menu_book_rounded, size: 16),
+                            label: const Text('View in Quran'),
+                          ),
+                        ),
+                      ),
+                    ],
 
                     // ── Explanation section ─────────────────
                     if (state.isExplaining ||
@@ -446,6 +493,40 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _skeleton(width: 170, height: 28),
+          const SizedBox(height: 8),
+          _skeleton(width: 130, height: 14),
+          const SizedBox(height: 28),
+          _skeleton(width: double.infinity, height: 280, radius: 24),
+          const SizedBox(height: 20),
+          Row(
+            children: const [
+              Expanded(child: _SkeletonBlock(height: 64)),
+              SizedBox(width: 10),
+              Expanded(child: _SkeletonBlock(height: 64)),
+              SizedBox(width: 10),
+              Expanded(child: _SkeletonBlock(height: 64)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _skeleton({
+    required double width,
+    required double height,
+    double radius = 12,
+  }) {
+    return _SkeletonBlock(width: width, height: height, radius: radius);
+  }
+
   Widget _actionButton({
     required IconData icon,
     required String label,
@@ -510,23 +591,33 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.image_rounded, color: AppColors.gold),
-              title: const Text('Share as image',
-                  style: TextStyle(color: AppColors.textPrimary)),
-              subtitle: const Text('Generate a styled verse card',
-                  style: TextStyle(color: AppColors.textMuted)),
+              title: const Text(
+                'Share as image',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+              subtitle: const Text(
+                'Generate a styled verse card',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
               onTap: () => Navigator.of(ctx).pop('image'),
             ),
             ListTile(
-              leading: const Icon(Icons.text_snippet_rounded,
-                  color: AppColors.gold),
-              title: const Text('Share as text',
-                  style: TextStyle(color: AppColors.textPrimary)),
+              leading: const Icon(
+                Icons.text_snippet_rounded,
+                color: AppColors.gold,
+              ),
+              title: const Text(
+                'Share as text',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
               onTap: () => Navigator.of(ctx).pop('text'),
             ),
             ListTile(
               leading: const Icon(Icons.copy_rounded, color: AppColors.gold),
-              title: const Text('Copy to clipboard',
-                  style: TextStyle(color: AppColors.textPrimary)),
+              title: const Text(
+                'Copy to clipboard',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
               onTap: () => Navigator.of(ctx).pop('copy'),
             ),
             const SizedBox(height: 8),
@@ -551,8 +642,7 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
         reference: reference,
       );
     } else {
-      final shareText =
-          '$reference\n\n$arabic\n\n${translation ?? ''}';
+      final shareText = '$reference\n\n$arabic\n\n${translation ?? ''}';
       await Clipboard.setData(ClipboardData(text: shareText));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -572,6 +662,27 @@ class _DailyAyahPageState extends ConsumerState<DailyAyahPage> {
               ? 'Saved verse ${verse.verseKey}.'
               : 'Removed verse ${verse.verseKey}.',
         ),
+      ),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  final double? width;
+  final double height;
+  final double radius;
+
+  const _SkeletonBlock({this.width, required this.height, this.radius = 12});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.divider),
       ),
     );
   }

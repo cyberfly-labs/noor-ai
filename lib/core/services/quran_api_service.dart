@@ -9,8 +9,9 @@ import '../models/quran_translation_resource.dart';
 import '../models/reflection_post.dart';
 import '../models/verse.dart';
 import '../models/surah.dart';
-import 'local_quran_asset_service.dart';
 import 'quran_api_config_service.dart';
+import 'quran_mcp_service.dart';
+import 'database_service.dart';
 
 /// Quran content client with backend-compatible Quran Foundation support.
 class QuranApiService {
@@ -290,34 +291,32 @@ class QuranApiService {
   Future<String?> getVerseTafsir(
     int surahNumber,
     int ayahNumber, {
-    int tafsirId = _defaultQuranFoundationTafsirId,
+    int tafsirId = 169, // Default to Ibn Kathir (English)
   }) async {
-    if (!_isValidVerseReference(surahNumber, ayahNumber)) {
-      debugPrint(
-        'QuranAPI: Invalid tafsir verse reference $surahNumber:$ayahNumber',
+    final verseKey = '$surahNumber:$ayahNumber';
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/tafsirs/$tafsirId/by_ayah/$verseKey',
       );
-      return null;
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final tafsir = data['tafsir'];
+        if (tafsir != null) {
+          return _stripHtml(tafsir['text'] as String? ?? '');
+        }
+      }
+    } catch (e) {
+      debugPrint('QuranAPI: Failed to fetch tafsir for $verseKey: $e');
     }
-
-    return LocalQuranAssetService.instance.getVerseTafsir(
-      surahNumber,
-      ayahNumber,
-    );
+    return null;
   }
 
   Future<String?> getVerseTafsirSource(
     int surahNumber,
     int ayahNumber, {
-    int tafsirId = _defaultQuranFoundationTafsirId,
+    int tafsirId = 169,
   }) async {
-    if (!_isValidVerseReference(surahNumber, ayahNumber)) {
-      return null;
-    }
-
-    return LocalQuranAssetService.instance.getVerseTafsirSource(
-      surahNumber,
-      ayahNumber,
-    );
+    return 'Quran.com';
   }
 
   int? _maxAyahsForSurah(int surahNumber) {
@@ -339,36 +338,202 @@ class QuranApiService {
   // ── Verse Retrieval ──
 
   Future<ChapterInfo?> getChapterInfo(int surahNumber) async {
-    if (_maxAyahsForSurah(surahNumber) == null) {
-      debugPrint(
-        'QuranAPI: Invalid chapter info request for surah $surahNumber',
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/chapters/$surahNumber/info',
+        queryParameters: {'language': 'en'},
       );
-      return null;
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final info = data['chapter_info'];
+        if (info != null) {
+          return ChapterInfo.fromJson(info);
+        }
+      }
+    } catch (e) {
+      debugPrint('QuranAPI: Failed to fetch chapter info for $surahNumber: $e');
     }
     return null;
   }
 
   Future<Verse?> getVerse(int surahNumber, int ayahNumber) async {
-    if (!_isValidVerseReference(surahNumber, ayahNumber)) {
-      debugPrint('QuranAPI: Invalid verse reference $surahNumber:$ayahNumber');
-      return null;
+    final verseKey = '$surahNumber:$ayahNumber';
+
+    // Check local cache first
+    try {
+      final cached = await DatabaseService.instance.getCachedVerse(verseKey);
+      if (cached != null) {
+        return Verse(
+          verseKey: verseKey,
+          surahNumber: surahNumber,
+          ayahNumber: ayahNumber,
+          arabicText: cached['arabic_text'] ?? '',
+          translationText: cached['translation_text'] ?? '',
+          audioUrl: cached['audio_url'] ?? '',
+          transliteration: '',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error reading verse cache: $e');
     }
 
-    return LocalQuranAssetService.instance.getVerse(surahNumber, ayahNumber);
+    // Fetch from Quran.com API
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/verses/by_key/$verseKey',
+        queryParameters: {
+          'language': 'en',
+          'words': 'false',
+          'translations': '131', // Clear Quran (Dr. Mustafa Khattab)
+          'fields': 'text_uthmani',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final verseData = data['verse'] as Map<String, dynamic>?;
+        
+        if (verseData != null) {
+          final arabicText = (verseData['text_uthmani'] as String? ?? '').trim();
+          final translations = verseData['translations'] as List?;
+          String translationText = '';
+          if (translations != null && translations.isNotEmpty) {
+            translationText = _stripHtml(translations.first['text'] as String? ?? '');
+          }
+
+          final verse = Verse(
+            verseKey: verseKey,
+            surahNumber: surahNumber,
+            ayahNumber: ayahNumber,
+            arabicText: arabicText,
+            translationText: translationText,
+            transliteration: '',
+          );
+
+          // Save to cache
+          try {
+            await DatabaseService.instance.cacheVerse({
+              'verse_key': verseKey,
+              'surah_number': surahNumber,
+              'ayah_number': ayahNumber,
+              'arabic_text': arabicText,
+              'translation_text': translationText,
+              'audio_url': verse.audioUrl,
+            });
+          } catch (e) {
+            debugPrint('Error saving verse cache: $e');
+          }
+
+          return verse;
+        }
+      }
+    } catch (e) {
+      debugPrint('QuranAPI: Failed to fetch verse $verseKey: $e');
+    }
+
+    return null;
+  }
+
+  String _stripHtml(String html) {
+    if (html.isEmpty) return '';
+    
+    // Replace structural HTML tags with newlines before stripping
+    String processed = html
+        .replaceAll(RegExp(r'</p>|<br\s*/?>'), '\n')
+        .replaceAll(RegExp(r'<li>'), '\n• ')
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lsquo;', "'")
+        .replaceAll('&rsquo;', "'")
+        .replaceAll('&ldquo;', '"')
+        .replaceAll('&rdquo;', '"')
+        .replaceAll('&#39;', "'");
+
+    // Normalize multiple newlines and trim
+    return processed
+        .replaceAll(RegExp(r'\n\s*\n+'), '\n\n')
+        .trim();
   }
 
   Future<List<Verse>> getSurahVerses(int surahNumber) async {
-    if (_maxAyahsForSurah(surahNumber) == null) {
-      return const <Verse>[];
+    final maxAyahs = _maxAyahsForSurah(surahNumber) ?? 0;
+    final verses = <Verse>[];
+    
+    for (int i = 1; i <= maxAyahs; i++) {
+      final v = await getVerse(surahNumber, i);
+      if (v != null) verses.add(v);
+      if (i > 15) break; 
     }
-
-    return LocalQuranAssetService.instance.getSurahVerses(surahNumber);
+    return verses;
   }
 
   // ── Surah List ──
 
   Future<List<Surah>> listSurahs() async {
-    return LocalQuranAssetService.instance.listSurahs();
+    // 1. Try local cache first
+    try {
+      final cachedChapters = await DatabaseService.instance.getCachedSurahs();
+      if (cachedChapters.isNotEmpty && cachedChapters.length == 114) {
+        debugPrint('QuranAPI: Returning surahs from local cache');
+        return cachedChapters.map((c) {
+          final number = c['id'] as int? ?? c['chapter_number'] as int? ?? c['number'] as int? ?? 0;
+          return Surah(
+            number: number,
+            name: c['name_arabic'] ?? '',
+            englishName: c['name_simple'] ?? c['name_complex'] ?? '',
+            englishNameTranslation: c['translated_name']?['name'] ?? '',
+            numberOfAyahs: c['verses_count'] as int? ?? 0,
+            revelationType: c['revelation_place'] ?? 'meccan',
+            pages: (c['pages'] as List?)?.cast<int>() ?? [],
+          );
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint('QuranAPI: Cache read error: $e');
+    }
+
+    // 2. Fetch from Quran.com API
+    try {
+      debugPrint('QuranAPI: Fetching surahs from api.quran.com...');
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/chapters',
+        queryParameters: {'language': 'en'},
+      );
+      
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final chapters = data['chapters'] as List;
+        
+        // Save to cache
+        try {
+          await DatabaseService.instance.insertSurahs(
+            chapters.map((c) => Map<String, dynamic>.from(c as Map)).toList()
+          );
+        } catch (e) {
+          debugPrint('QuranAPI: Cache save error: $e');
+        }
+
+        return chapters.map((c) {
+          final map = c as Map<String, dynamic>;
+          return Surah(
+            number: map['id'] as int,
+            name: map['name_arabic'] ?? '',
+            englishName: map['name_simple'] ?? map['name_complex'] ?? '',
+            englishNameTranslation: map['translated_name']?['name'] ?? '',
+            numberOfAyahs: map['verses_count'] as int? ?? 0,
+            revelationType: map['revelation_place'] ?? 'meccan',
+            pages: (map['pages'] as List?)?.cast<int>() ?? [],
+          );
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint('QuranAPI: Remote fetch error: $e');
+    }
+
+    // 3. Fallback: Return empty if remote fetch fails
+    return [];
   }
 
   Future<List<QuranTranslationResource>> listTranslationResources() async {
@@ -496,7 +661,20 @@ class QuranApiService {
       return [];
     }
 
-    return LocalQuranAssetService.instance.search(trimmed);
+    final results = await QuranMcpService.instance.searchQuran(trimmed);
+    return results.map((r) {
+      final verseKey = r['ayah_key'] as String? ?? r['verse_key'] as String? ?? '';
+      final parts = verseKey.split(':');
+      final sn = parts.length == 2 ? int.tryParse(parts[0]) : null;
+      final an = parts.length == 2 ? int.tryParse(parts[1]) : null;
+      
+      return Verse(
+        verseKey: verseKey,
+        surahNumber: sn ?? 0,
+        ayahNumber: an ?? 0,
+        translationText: (r['translations'] as List?)?.first['text'] ?? r['text'] ?? '',
+      );
+    }).toList();
   }
 
   // ── Audio ──
@@ -594,6 +772,46 @@ class QuranApiService {
   // ── Random Verse (for Daily Ayah) ──
 
   Future<Verse?> getRandomVerse() async {
+    // Try the public Quran Foundation API for a truly random verse
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/verses/random',
+        queryParameters: {
+          'language': 'en',
+          'fields': 'text_uthmani,verse_key,chapter_id',
+          'translations': '131',
+        },
+      );
+      final data = _mapFromData(response.data);
+      final verse = _mapFromData(data?['verse']);
+      if (verse != null) {
+        final verseKey = verse['verse_key'] as String?;
+        final arabicText = (verse['text_uthmani'] as String? ?? '').trim();
+        if (verseKey != null && verseKey.isNotEmpty) {
+          final parts = verseKey.split(':');
+          final surahNumber = int.tryParse(parts[0]) ?? 1;
+          final ayahNumber = int.tryParse(parts.length > 1 ? parts[1] : '1') ?? 1;
+
+          final translations = verse['translations'] as List?;
+          String translationText = '';
+          if (translations != null && translations.isNotEmpty) {
+            translationText = _stripHtml(translations.first['text'] as String? ?? '');
+          }
+
+          return Verse(
+            verseKey: verseKey,
+            surahNumber: surahNumber,
+            ayahNumber: ayahNumber,
+            arabicText: arabicText,
+            translationText: translationText,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('QuranAPI: Random verse fetch failed, using deterministic fallback: $e');
+    }
+
+    // Deterministic fallback based on day of year
     final dayOfYear = DateTime.now()
         .difference(DateTime(DateTime.now().year, 1, 1))
         .inDays;

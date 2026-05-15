@@ -165,6 +165,33 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
             style: TextStyle(color: AppColors.textMuted, fontSize: 13),
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 24),
+          GestureDetector(
+            onTap: () => context.go('/quran'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.gold12,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.gold25),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.menu_book_rounded, size: 16, color: AppColors.gold),
+                  SizedBox(width: 8),
+                  Text(
+                    'Browse Quran',
+                    style: TextStyle(
+                      color: AppColors.gold,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -184,6 +211,10 @@ class _BookmarkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surahNumber = int.tryParse(
+      (bookmark.verseKey as String).split(':').first,
+    );
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -217,6 +248,15 @@ class _BookmarkCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                if (surahNumber != null)
+                  Text(
+                    'Surah $surahNumber',
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
                 const Spacer(),
                 SizedBox(
                   width: 32,

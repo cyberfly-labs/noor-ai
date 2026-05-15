@@ -290,9 +290,8 @@ class _DateSeparator extends StatelessWidget {
     final now = DateTime.now();
     final isToday =
         date.year == now.year && date.month == now.month && date.day == now.day;
-    final isYesterday = date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day - 1;
+    final yesterday = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    final isYesterday = date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day;
 
     final label = isToday
         ? 'Today'

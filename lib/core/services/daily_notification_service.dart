@@ -9,7 +9,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'database_service.dart';
-import 'vector_store_service.dart' show EmotionalVerse, kEmotionalVerses;
+import '../models/emotional_verse.dart';
 
 /// Manages a daily Quran emotional comfort / motivation notification.
 class DailyNotificationService {

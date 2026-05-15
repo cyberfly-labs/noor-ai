@@ -22,9 +22,27 @@ class DatabaseService {
 
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE surahs (
+          number INTEGER PRIMARY KEY,
+          name_arabic TEXT,
+          name_complex TEXT,
+          name_simple TEXT,
+          revelation_place TEXT,
+          verses_count INTEGER,
+          pages TEXT,
+          translated_name TEXT
+        )
+      ''');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -81,6 +99,60 @@ class DatabaseService {
         cached_at INTEGER NOT NULL
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE surahs (
+        number INTEGER PRIMARY KEY,
+        name_arabic TEXT,
+        name_complex TEXT,
+        name_simple TEXT,
+        revelation_place TEXT,
+        verses_count INTEGER,
+        pages TEXT,
+        translated_name TEXT
+      )
+    ''');
+  }
+
+  // ── Surahs Cache ──
+
+  Future<void> insertSurahs(List<Map<String, dynamic>> surahs) async {
+    final db = await database;
+    final batch = db.batch();
+    for (final surah in surahs) {
+      batch.insert('surahs', {
+        'number': surah['id'] ?? surah['chapter_number'] ?? surah['number'],
+        'name_arabic': surah['name_arabic'],
+        'name_complex': surah['name_complex'],
+        'name_simple': surah['name_simple'],
+        'revelation_place': surah['revelation_place'],
+        'verses_count': surah['verses_count'],
+        'pages': surah['pages'] != null ? surah['pages'].join(',') : null,
+        'translated_name': surah['translated_name'] is Map 
+            ? surah['translated_name']['name'] 
+            : surah['translated_name'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getCachedSurahs() async {
+    final db = await database;
+    final maps = await db.query('surahs', orderBy: 'number ASC');
+    return maps.map((map) {
+      final mutableMap = Map<String, dynamic>.from(map);
+      if (mutableMap['pages'] != null) {
+        mutableMap['pages'] = (mutableMap['pages'] as String)
+            .split(',')
+            .map(int.tryParse)
+            .whereType<int>()
+            .toList();
+      }
+      if (mutableMap['translated_name'] != null) {
+        mutableMap['translated_name'] = {'name': mutableMap['translated_name']};
+      }
+      return mutableMap;
+    }).toList();
   }
 
   // ── Chat Messages ──

@@ -260,7 +260,7 @@ class AboutPage extends StatelessWidget {
                   _TechRow(label: 'State Management', value: 'Riverpod'),
                   _TechRow(label: 'AI Engine', value: 'MNN + Qwen3.5 (on-device)'),
                   _TechRow(label: 'Speech', value: 'Whisper (on-device ASR)'),
-                  _TechRow(label: 'Vector Search', value: 'zvec_flutter (local)'),
+                  _TechRow(label: 'Vector Search', value: 'On-device RAG (local)'),
                   _TechRow(label: 'Auth', value: 'OAuth2 PKCE (QF)'),
                   _TechRow(label: 'Storage', value: 'SQLite + SharedPrefs'),
                   _TechRow(label: 'Routing', value: 'GoRouter'),

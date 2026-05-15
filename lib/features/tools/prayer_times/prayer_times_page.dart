@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:adhan/adhan.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -18,6 +20,8 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   Position? _position;
   String? _error;
   bool _loading = true;
+  int _loadedDay = 0;
+  Timer? _tick;
 
   CalculationMethod _method = CalculationMethod.muslim_world_league;
   Madhab _madhab = Madhab.shafi;
@@ -26,6 +30,21 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
   void initState() {
     super.initState();
     _load();
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      final today = DateTime.now().day;
+      if (today != _loadedDay) {
+        _load();
+      } else {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -49,6 +68,7 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
       _times = times;
       _sunnah = SunnahTimes(times);
       _loading = false;
+      _loadedDay = DateTime.now().day;
     });
   }
 

@@ -12,7 +12,7 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/llm_service.dart';
 import '../../../core/services/quran_api_service.dart';
 import '../../../core/services/quran_rag_service.dart';
-import '../../../core/services/vector_store_service.dart' show EmotionalVerse;
+import '../../../core/models/emotional_verse.dart';
 import '../../../core/services/voice_service.dart';
 import '../../../core/utils/asr_normalization_pipeline.dart';
 import '../../../core/utils/emotional_response_repair.dart';
@@ -611,7 +611,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
   ) async {
     final evidence = await _quranRag.retrieveGroundedEvidence(
       rawQuery,
-      limit: 5,
+      limit: 2,
     );
     return evidence
         .map(
@@ -655,7 +655,7 @@ class HomeNotifier extends StateNotifier<HomeState> {
 
   Future<List<_GroundedVerseEvidence>> _buildGroundedVerseEvidence(
     List<String> verseKeys, {
-    int maxItems = 3,
+    int maxItems = 2,
   }) async {
     final evidence = await _quranRag.retrieveVerseEvidenceBatch(
       verseKeys,

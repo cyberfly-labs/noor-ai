@@ -106,7 +106,28 @@ class _NamesOfAllahPageState extends State<NamesOfAllahPage> {
 
             // ── List / Grid ─────────────────────────────
             Expanded(
-              child: _gridView
+              child: q.isNotEmpty && names.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.search_off_rounded,
+                            size: 48,
+                            color: AppColors.textMuted,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No names found for "$q"',
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _gridView
                   ? GridView.builder(
                       padding: EdgeInsets.fromLTRB(
                         16,

@@ -424,26 +424,69 @@ class NativeBridge {
   /// Stream tokens from the LLM. Returns a broadcast stream of token strings.
   Stream<String> chatStream(String message, {String? conversationId}) {
     _loadFunctions();
-    final controller = StreamController<String>.broadcast();
 
     final msgPtr = message.toNativeUtf8();
     final convPtr = (conversationId ?? '').toNativeUtf8();
     final docPtr = ''.toNativeUtf8();
 
-    // Create a native callback listener
+    // Whether the Dart stream has been cancelled / closed from the Dart side.
+    // When true we silently drop incoming tokens but keep the NativeCallable
+    // alive until the native side itself signals isFinal, at which point we
+    // can safely free everything.
+    bool dartCancelled = false;
+    bool nativeDone = false;
+
     late final NativeCallable<StreamCallback> nativeCallback;
+    late final StreamController<String> controller;
+
+    // Only called once the native side has finished (isFinal == 1 or -1).
+    // At that point no more callbacks will arrive, so it is safe to close
+    // the NativeCallable and free the native memory.
+    void releaseNative() {
+      if (nativeDone) return;
+      nativeDone = true;
+      nativeCallback.close();
+      calloc.free(msgPtr);
+      calloc.free(convPtr);
+      calloc.free(docPtr);
+    }
+
+    controller = StreamController<String>.broadcast(
+      onCancel: () {
+        // Signal the native side to stop generating.  Do NOT close the
+        // NativeCallable here — the native thread may still be running and
+        // would crash writing to the freed trampoline page.  We just mark
+        // dartCancelled so incoming tokens are dropped, and wait for the
+        // native side to call back with isFinal == 1.
+        dartCancelled = true;
+        cancelGeneration();
+      },
+    );
+
     nativeCallback = NativeCallable<StreamCallback>.listener(
       (Pointer<Utf8> token, int isFinal, Pointer<Void> userData) {
         if (token != nullptr) {
-          final text = token.toDartString();
-          _releaseNativeString(token);
-          if (text.isNotEmpty) {
-            controller.add(text);
+          if (!dartCancelled) {
+            final text = token.toDartString();
+            _releaseNativeString(token);
+            if (text.isNotEmpty && !controller.isClosed) {
+              controller.add(text);
+            }
+          } else {
+            // Still need to free the token even when cancelled.
+            _releaseNativeString(token);
           }
         }
-        if (isFinal == 1) {
-          controller.close();
-          nativeCallback.close();
+
+        if (isFinal == 1 || isFinal == -1) {
+          if (!controller.isClosed) {
+            if (isFinal == -1 && !dartCancelled) {
+              controller.addError(Exception('LLM generation failed'));
+            }
+            controller.close();
+          }
+          // Native side is done — now safe to free the trampoline.
+          releaseNative();
         }
       },
     );
@@ -453,14 +496,12 @@ class NativeBridge {
       nativeCallback.nativeFunction, nullptr,
     );
 
-    calloc.free(msgPtr);
-    calloc.free(convPtr);
-    calloc.free(docPtr);
-
     if (!result.isSuccess) {
-      controller.addError(Exception(result.error ?? 'LLM generation failed'));
-      controller.close();
-      nativeCallback.close();
+      if (!controller.isClosed) {
+        controller.addError(Exception(result.error ?? 'LLM generation failed'));
+        controller.close();
+      }
+      releaseNative();
     }
 
     return controller.stream;
@@ -508,9 +549,9 @@ class NativeBridge {
     _ttsSetGainFunc!(gain);
   }
 
-  // ── RAG / Vector Search (zvec) ──
+  // ── RAG / Vector Search ──
 
-  /// Search the native zvec knowledge base.
+  /// Search the native knowledge base.
   /// Returns a JSON string: `[{"doc_id":..., "chunk_id":..., "score":..., "content":..., "metadata":{...}}, ...]`
   String? searchKnowledge(String query, {int limit = 5}) {
     _loadFunctions();
@@ -531,7 +572,7 @@ class NativeBridge {
     }
   }
 
-  /// Search only within a single logical document hash in the native zvec knowledge base.
+  /// Search only within a single logical document hash in the native knowledge base.
   String? searchInDocument(String documentId, String query, {int limit = 5}) {
     _loadFunctions();
     final documentPtr = documentId.toNativeUtf8();
@@ -553,7 +594,7 @@ class NativeBridge {
     }
   }
 
-  /// Add a paged document to the native zvec knowledge base.
+  /// Add a paged document to the native knowledge base.
   /// [pagesJson] is a JSON array of `[{"text": "..."}, ...]`.
   /// [metadataJson] is a JSON object with at least a `"hash"` field.
   /// Returns the hash of the inserted document, or null on failure.

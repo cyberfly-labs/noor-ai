@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/services/daily_notification_service.dart';
 import '../../../core/services/llm_service.dart';
@@ -37,6 +38,7 @@ class _SettingsPageState extends State<SettingsPage> {
   List<TtsVoiceOption> _availableTtsVoices = const <TtsVoiceOption>[];
   bool _reminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 6, minute: 0);
+  String _appVersion = 'Loading version...';
 
   @override
   void initState() {
@@ -46,6 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadUserAuthState();
     _loadAudioSettings();
     _loadReminderSettings();
+    _loadAppVersion();
   }
 
   @override
@@ -111,8 +114,43 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _signOutUser() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceLight,
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your local data stays on this device, but account sync will be disabled until you sign in again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
     await _userSessionService.signOut();
     _handleUserSessionChanged();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _appVersion = 'Version ${info.version}+${info.buildNumber}';
+    });
   }
 
   Future<void> _syncAccountNow() async {
@@ -364,12 +402,10 @@ class _SettingsPageState extends State<SettingsPage> {
             _settingCard(
               icon: Icons.info_outline_rounded,
               title: 'Noor AI',
-              subtitle: 'Version 1.0.0',
+              subtitle: _appVersion,
               trailing: TextButton(
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const AboutPage(),
-                  ),
+                  MaterialPageRoute<void>(builder: (_) => const AboutPage()),
                 ),
                 child: const Text(
                   'About',
@@ -529,7 +565,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final subtitle = isSignedIn
         ? 'Signed in with Quran Foundation. Bookmarks, reading progress, streak sync, and reflections are enabled.'
         : (_userAuthError?.trim().isNotEmpty == true
-              ? _userAuthError!
+              ? 'Sign-in could not be completed. Please try again.'
               : 'Sign in with your Quran Foundation account to sync bookmarks, progress, streaks, and share reflections.');
 
     return Container(
@@ -856,6 +892,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              key: ValueKey(_ttsVoiceId),
               initialValue:
                   _availableTtsVoices.any((voice) => voice.id == _ttsVoiceId)
                   ? _ttsVoiceId
@@ -927,6 +964,21 @@ class _SettingsPageState extends State<SettingsPage> {
               );
             },
           ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _ttsGain == 1.8
+                  ? null
+                  : () async {
+                      setState(() => _ttsGain = 1.8);
+                      await VoiceService.instance.setAudioBoost(
+                        ttsGain: _ttsGain,
+                        playbackVolume: _playbackVolume,
+                      );
+                    },
+              child: const Text('Reset boost'),
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'Recitation playback ${(100 * _playbackVolume).round()}%',
@@ -954,6 +1006,21 @@ class _SettingsPageState extends State<SettingsPage> {
                 playbackVolume: value,
               );
             },
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _playbackVolume == 1.0
+                  ? null
+                  : () async {
+                      setState(() => _playbackVolume = 1.0);
+                      await VoiceService.instance.setAudioBoost(
+                        ttsGain: _ttsGain,
+                        playbackVolume: _playbackVolume,
+                      );
+                    },
+              child: const Text('Reset volume'),
+            ),
           ),
         ],
       ),

@@ -23,7 +23,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _questionController = TextEditingController();
   bool _hasQuestionInput = false;
-  late final Future<List<Surah>> _surahsFuture;
+  late Future<List<Surah>> _surahsFuture;
   Future<QuranVerseSearchResult>? _searchResultsFuture;
   Timer? _searchDebounce;
   String _activeSearchQuery = '';
@@ -33,7 +33,10 @@ class _QuranPageState extends ConsumerState<QuranPage> {
   bool _responseCardDismissed = false;
 
   static const List<({String label, String prompt})> _featuredPrompts = [
-    (label: 'Hope & mercy', prompt: 'Show me Quran verses about hope and mercy.'),
+    (
+      label: 'Hope & mercy',
+      prompt: 'Show me Quran verses about hope and mercy.',
+    ),
     (label: 'Patience', prompt: 'Show me Quran verses about patience.'),
     (label: 'Surah Al-Kahf', prompt: 'Explain the themes of Surah Al-Kahf.'),
     (label: 'Gratitude', prompt: 'Show me Quran verses about gratitude.'),
@@ -87,13 +90,12 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                       const Spacer(),
                       Text(
                         'Quran',
-                        style: Theme.of(context).textTheme.titleLarge
-                            ?.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              fontSize: 22,
-                            ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                          fontSize: 22,
+                        ),
                       ),
                       const Spacer(),
                       if (!keyboardOpen)
@@ -135,9 +137,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                       ),
                       decoration: InputDecoration(
                         hintText: 'Ask from the whole Quran...',
-                        hintStyle: TextStyle(
-                          color: AppColors.textMuted80,
-                        ),
+                        hintStyle: TextStyle(color: AppColors.textMuted80),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -185,8 +185,8 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                                 child: IconButton(
                                   onPressed: _hasQuestionInput
                                       ? () => _sendQuestion(
-                                            _questionController.text,
-                                          )
+                                          _questionController.text,
+                                        )
                                       : null,
                                   icon: Icon(
                                     Icons.arrow_forward_rounded,
@@ -237,9 +237,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                       ),
                       decoration: InputDecoration(
                         hintText: 'Search surahs or keywords...',
-                        hintStyle: TextStyle(
-                          color: AppColors.textMuted80,
-                        ),
+                        hintStyle: TextStyle(color: AppColors.textMuted80),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -285,12 +283,11 @@ class _QuranPageState extends ConsumerState<QuranPage> {
             const SizedBox(height: 10),
 
             // ── Surah list / Search results ──────────────
-            if (!keyboardOpen)
-              Expanded(
-                child: _activeSearchQuery.isEmpty
-                    ? _buildSurahList()
-                    : _buildSearchResults(),
-              ),
+            Expanded(
+              child: _activeSearchQuery.isEmpty
+                  ? _buildSurahList()
+                  : _buildSearchResults(),
+            ),
           ],
         ),
       ),
@@ -310,9 +307,26 @@ class _QuranPageState extends ConsumerState<QuranPage> {
         final surahs = snapshot.data ?? const <Surah>[];
         if (surahs.isEmpty) {
           return Center(
-            child: Text(
-              'Could not load the surah list.',
-              style: TextStyle(color: AppColors.textMuted),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: AppColors.textMuted40,
+                  size: 40,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Could not load the surah list.',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _retryLoadSurahs,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Retry'),
+                ),
+              ],
             ),
           );
         }
@@ -347,7 +361,8 @@ class _QuranPageState extends ConsumerState<QuranPage> {
           );
         }
 
-        final searchResult = snapshot.data ?? const QuranVerseSearchResult.empty();
+        final searchResult =
+            snapshot.data ?? const QuranVerseSearchResult.empty();
         final results = searchResult.verses;
         final hasSurahMatches = _matchingSurahs.isNotEmpty;
         if (!hasSurahMatches && results.isEmpty) {
@@ -366,10 +381,6 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textMuted),
                 ),
-                if (snapshot.hasData) ...[
-                  const SizedBox(height: 10),
-                  _SearchBackendChip(label: searchResult.debugLabel),
-                ],
               ],
             ),
           );
@@ -404,7 +415,6 @@ class _QuranPageState extends ConsumerState<QuranPage> {
               _SearchSectionHeader(
                 title: 'Matching verses',
                 countLabel: '${results.length}',
-                debugLabel: searchResult.debugLabel,
               ),
               const SizedBox(height: 10),
               ...results.map(
@@ -459,10 +469,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                     decoration: BoxDecoration(
                       color: AppColors.surfaceLight,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: AppColors.divider,
-                        width: 0.5,
-                      ),
+                      border: Border.all(color: AppColors.divider, width: 0.5),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -508,23 +515,17 @@ class _QuranPageState extends ConsumerState<QuranPage> {
           height: 84,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _featuredSurahNumbers.length,
+            itemCount: _featuredSurahs.length,
             separatorBuilder: (context, index) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
-              final surahNumber = _featuredSurahNumbers[index];
-              Surah? surah;
-              for (final item in _allSurahs) {
-                if (item.number == surahNumber) {
-                  surah = item;
-                  break;
-                }
-              }
-              if (surah == null) {
+              final featuredSurahs = _featuredSurahs;
+              if (featuredSurahs.isEmpty) {
                 return const SizedBox.shrink();
               }
+              final surah = featuredSurahs[index];
 
               return GestureDetector(
-                onTap: () => _openSurahDetail(surah!),
+                onTap: () => _openSurahDetail(surah),
                 child: Container(
                   width: 120,
                   padding: const EdgeInsets.all(12),
@@ -535,10 +536,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                       colors: [AppColors.cardHighlight, AppColors.card],
                     ),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.gold15,
-                      width: 0.8,
-                    ),
+                    border: Border.all(color: AppColors.gold15, width: 0.8),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -671,9 +669,7 @@ class _QuranPageState extends ConsumerState<QuranPage> {
                           decoration: BoxDecoration(
                             color: AppColors.gold08,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.gold12,
-                            ),
+                            border: Border.all(color: AppColors.gold12),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -791,6 +787,30 @@ class _QuranPageState extends ConsumerState<QuranPage> {
     return surahs;
   }
 
+  void _retryLoadSurahs() {
+    setState(() {
+      _surahsFuture = _loadSurahs();
+    });
+  }
+
+  List<Surah> get _featuredSurahs {
+    if (_allSurahs.isEmpty) {
+      return const <Surah>[];
+    }
+
+    return _featuredSurahNumbers
+        .map((number) {
+          for (final surah in _allSurahs) {
+            if (surah.number == number) {
+              return surah;
+            }
+          }
+          return null;
+        })
+        .whereType<Surah>()
+        .toList(growable: false);
+  }
+
   List<Surah> _filterSurahs(String query) {
     final normalized = query.trim().toLowerCase();
     if (normalized.isEmpty) {
@@ -811,15 +831,10 @@ class _QuranPageState extends ConsumerState<QuranPage> {
 }
 
 class _SearchSectionHeader extends StatelessWidget {
-  const _SearchSectionHeader({
-    required this.title,
-    required this.countLabel,
-    this.debugLabel,
-  });
+  const _SearchSectionHeader({required this.title, required this.countLabel});
 
   final String title;
   final String countLabel;
-  final String? debugLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -847,37 +862,7 @@ class _SearchSectionHeader extends StatelessWidget {
             ),
           ),
         ),
-        if (debugLabel != null) ...[
-          const SizedBox(width: 8),
-          _SearchBackendChip(label: debugLabel!),
-        ],
       ],
-    );
-  }
-}
-
-class _SearchBackendChip extends StatelessWidget {
-  const _SearchBackendChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.textMuted.withValues(alpha: 0.16)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
     );
   }
 }

@@ -276,7 +276,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ),
                 ),
 
-                Expanded(child: RepaintBoundary(child: _buildResponseArea(state))),
+                Expanded(
+                  child: RepaintBoundary(child: _buildResponseArea(state)),
+                ),
 
                 if (!keyboardOpen &&
                     state.transcription != null &&
@@ -314,18 +316,23 @@ class _HomePageState extends ConsumerState<HomePage> {
                             ),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(
-                            '"${state.transcription}"',
-                            textAlign: TextAlign.center,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: AppColors.textSecondary.withValues(
-                                    alpha: 0.8,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () =>
+                                _showFullTranscription(state.transcription!),
+                            child: Text(
+                              '"${state.transcription}"',
+                              textAlign: TextAlign.center,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: AppColors.textSecondary.withValues(
+                                      alpha: 0.8,
+                                    ),
+                                    fontStyle: FontStyle.italic,
                                   ),
-                                  fontStyle: FontStyle.italic,
-                                ),
+                            ),
                           ),
                         ),
                       ],
@@ -389,8 +396,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                               focusedBorder: InputBorder.none,
                               suffixIcon: _hasInputText
                                   ? IconButton(
-                                      onPressed: () =>
-                                          _textController.clear(),
+                                      onPressed: () => _textController.clear(),
                                       icon: const Icon(
                                         Icons.close_rounded,
                                         size: 18,
@@ -404,9 +410,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                 vertical: 13,
                               ),
                             ),
-                            onSubmitted: isStopActionVisible
-                                ? null
-                                : _sendText,
+                            onSubmitted: isStopActionVisible ? null : _sendText,
                           ),
                         ),
                       ),
@@ -492,7 +496,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               );
             },
             child: _isAnswerPopupVisible
-                ? _buildAnswerPopupOverlay()
+                ? SizedBox.expand(child: _buildAnswerPopupOverlay())
                 : const SizedBox.shrink(),
           ),
         ],
@@ -527,6 +531,14 @@ class _HomePageState extends ConsumerState<HomePage> {
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
+              if (state.transcription?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () => _sendText(state.transcription!),
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Retry'),
+                ),
+              ],
             ],
           ),
         ),
@@ -999,154 +1011,174 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  void _showFullTranscription(String transcription) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceLight,
+        title: const Text('Transcription'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            transcription,
+            style: const TextStyle(color: AppColors.textPrimary),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAnswerPopupOverlay() {
     final state = _popupSnapshot;
-    return Positioned.fill(
-      child: Material(
-        color: AppColors.black32,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: _hideAnswerPopup,
-                child: const SizedBox.expand(),
-              ),
+    return Material(
+      color: AppColors.black32,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _hideAnswerPopup,
+              child: const SizedBox.expand(),
             ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: SafeArea(
-                top: false,
-                child: FractionallySizedBox(
-                  heightFactor: 0.92,
-                  widthFactor: 1,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              top: false,
+              child: FractionallySizedBox(
+                heightFactor: 0.92,
+                widthFactor: 1,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    border: Border.all(color: AppColors.gold12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.black28,
+                        blurRadius: 28,
+                        offset: const Offset(0, -6),
                       ),
-                      border: Border.all(color: AppColors.gold12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.black28,
-                          blurRadius: 28,
-                          offset: const Offset(0, -6),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 10),
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.textMuted40,
+                          borderRadius: BorderRadius.circular(999),
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 10),
-                        Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: AppColors.textMuted40,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.gold10,
-                                ),
-                                child: const Icon(
-                                  Icons.auto_awesome_rounded,
-                                  size: 16,
-                                  color: AppColors.gold,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Answer',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(
-                                      color: AppColors.textPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                              const Spacer(),
-                              IconButton(
-                                onPressed:
-                                    state.response == null ||
-                                        state.response!.trim().isEmpty
-                                    ? null
-                                    : () => _copyAnswer(state.response!),
-                                icon: Icon(
-                                  Icons.copy_rounded,
-                                  size: 20,
-                                  color: AppColors.textSecondary,
-                                ),
-                                tooltip: 'Copy answer',
-                              ),
-                              IconButton(
-                                onPressed:
-                                    state.response == null ||
-                                        state.response!.trim().isEmpty
-                                    ? null
-                                    : () => _shareAsPost(state),
-                                icon: Icon(
-                                  Icons.share_rounded,
-                                  size: 20,
-                                  color: AppColors.textSecondary,
-                                ),
-                                tooltip: 'Share as reflection',
-                              ),
-                              IconButton(
-                                onPressed: _hideAnswerPopup,
-                                icon: Icon(
-                                  Icons.close_rounded,
-                                  size: 20,
-                                  color: AppColors.textSecondary,
-                                ),
-                                tooltip: 'Close',
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(height: 0.5, color: AppColors.divider),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            controller: _popupScrollController,
-                            padding: EdgeInsets.fromLTRB(
-                              20,
-                              20,
-                              20,
-                              20 + MediaQuery.of(context).viewInsets.bottom,
-                            ),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(18),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
-                                color: AppColors.surfaceLight,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: AppColors.divider),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.black18,
-                                    blurRadius: 24,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
+                                shape: BoxShape.circle,
+                                color: AppColors.gold10,
                               ),
-                              child: _buildAnswerContent(state),
+                              child: const Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 16,
+                                color: AppColors.gold,
+                              ),
                             ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Answer',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed:
+                                  state.response == null ||
+                                      state.response!.trim().isEmpty
+                                  ? null
+                                  : () => _copyAnswer(state.response!),
+                              icon: Icon(
+                                Icons.copy_rounded,
+                                size: 20,
+                                color: AppColors.textSecondary,
+                              ),
+                              tooltip: 'Copy answer',
+                            ),
+                            IconButton(
+                              onPressed:
+                                  state.response == null ||
+                                      state.response!.trim().isEmpty
+                                  ? null
+                                  : () => _shareAsPost(state),
+                              icon: Icon(
+                                Icons.share_rounded,
+                                size: 20,
+                                color: AppColors.textSecondary,
+                              ),
+                              tooltip: 'Share as reflection',
+                            ),
+                            IconButton(
+                              onPressed: _hideAnswerPopup,
+                              icon: Icon(
+                                Icons.close_rounded,
+                                size: 20,
+                                color: AppColors.textSecondary,
+                              ),
+                              tooltip: 'Close',
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(height: 0.5, color: AppColors.divider),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          controller: _popupScrollController,
+                          padding: EdgeInsets.fromLTRB(
+                            20,
+                            20,
+                            20,
+                            20 + MediaQuery.of(context).viewInsets.bottom,
+                          ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceLight,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppColors.divider),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.black18,
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: _buildAnswerContent(state),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1180,10 +1212,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _SharePostSheet(
-        body: body,
-        verse: verse,
-      ),
+      builder: (_) => _SharePostSheet(body: body, verse: verse),
     );
   }
 
@@ -1340,7 +1369,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
             child: Row(
               children: [
-                Icon(Icons.verified_outlined, size: 16, color: AppColors.accent),
+                Icon(
+                  Icons.verified_outlined,
+                  size: 16,
+                  color: AppColors.accent,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1698,7 +1731,8 @@ class _SharePostSheetState extends State<_SharePostSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom +
+    final bottomInset =
+        MediaQuery.of(context).viewInsets.bottom +
         MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -1726,9 +1760,9 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                 Text(
                   'Share as Reflection',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
                 const Spacer(),
                 if (_saving)
@@ -1738,10 +1772,7 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 else
-                  TextButton(
-                    onPressed: _publish,
-                    child: const Text('Publish'),
-                  ),
+                  TextButton(onPressed: _publish, child: const Text('Publish')),
               ],
             ),
             if (widget.verse != null)
@@ -1751,10 +1782,7 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'Surah ${widget.verse!.surahNumber}:${widget.verse!.ayahNumber}',
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                   ),
                 ),
               ),
