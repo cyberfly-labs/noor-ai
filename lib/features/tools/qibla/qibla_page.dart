@@ -167,52 +167,156 @@ class _QiblaPageState extends State<QiblaPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            aligned ? 'Aligned with Qibla' : 'Rotate until the arrow is up',
-            style: TextStyle(
-              color: aligned ? AppColors.success : AppColors.textSecondary,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
+          // Status badge
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: aligned
+                  ? AppColors.success.withValues(alpha: 0.12)
+                  : AppColors.gold10,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: aligned
+                    ? AppColors.success.withValues(alpha: 0.3)
+                    : AppColors.gold20,
+                width: 0.8,
+              ),
             ),
-          ),
-          const SizedBox(height: 28),
-          SizedBox(
-            width: 280,
-            height: 280,
-            child: Stack(
-              alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Outer ring rotating with device.
-                Transform.rotate(
-                  angle: -_deviceHeading * math.pi / 180,
-                  child: _CompassFace(),
+                Icon(
+                  aligned
+                      ? Icons.check_circle_rounded
+                      : Icons.rotate_right_rounded,
+                  size: 16,
+                  color: aligned ? AppColors.success : AppColors.gold,
                 ),
-                // Qibla pointer (rotates to true qibla relative to device).
-                Transform.rotate(
-                  angle: rotation * math.pi / 180,
-                  child: _QiblaPointer(aligned: aligned),
-                ),
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    color: AppColors.gold,
-                    shape: BoxShape.circle,
+                const SizedBox(width: 6),
+                Text(
+                  aligned
+                      ? 'Facing Qibla'
+                      : 'Rotate until the arrow points up',
+                  style: TextStyle(
+                    color: aligned ? AppColors.success : AppColors.gold,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 28),
-          _infoRow('Qibla bearing', '${qibla.toStringAsFixed(1)}°'),
-          const SizedBox(height: 6),
-          _infoRow('Heading', '${_deviceHeading.toStringAsFixed(1)}°'),
+          const SizedBox(height: 32),
+
+          // Compass
+          SizedBox(
+            width: 290,
+            height: 290,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Outer glow
+                Container(
+                  width: 290,
+                  height: 290,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (aligned ? AppColors.success : AppColors.gold)
+                            .withValues(alpha: 0.08),
+                        blurRadius: 40,
+                        spreadRadius: 10,
+                      ),
+                    ],
+                  ),
+                ),
+                // Compass face rotating with device
+                Transform.rotate(
+                  angle: -_deviceHeading * math.pi / 180,
+                  child: _CompassFace(),
+                ),
+                // Qibla pointer
+                Transform.rotate(
+                  angle: rotation * math.pi / 180,
+                  child: _QiblaPointer(aligned: aligned),
+                ),
+                // Center dot
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: aligned ? AppColors.success : AppColors.gold,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (aligned ? AppColors.success : AppColors.gold)
+                            .withValues(alpha: 0.5),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 32),
+
+          // Info cards
+          Row(
+            children: [
+              Expanded(
+                child: _infoCard(
+                  'Qibla',
+                  '${qibla.toStringAsFixed(1)}°',
+                  Icons.explore_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _infoCard(
+                  'Heading',
+                  '${_deviceHeading.toStringAsFixed(1)}°',
+                  Icons.navigation_rounded,
+                ),
+              ),
+            ],
+          ),
           if (_position != null) ...[
-            const SizedBox(height: 6),
-            _infoRow(
-              'Location',
-              '${_position!.latitude.toStringAsFixed(3)}, '
-                  '${_position!.longitude.toStringAsFixed(3)}',
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.divider, width: 0.5),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.location_on_rounded,
+                    size: 14,
+                    color: AppColors.textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${_position!.latitude.toStringAsFixed(4)}, '
+                    '${_position!.longitude.toStringAsFixed(4)}',
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
@@ -220,18 +324,43 @@ class _QiblaPageState extends State<QiblaPage> {
     );
   }
 
-  Widget _infoRow(String label, String value) => Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget _infoCard(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider, width: 0.5),
+      ),
+      child: Row(
         children: [
-          Text('$label: ',
-              style: const TextStyle(color: AppColors.textMuted)),
-          Text(value,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              )),
+          Icon(icon, size: 16, color: AppColors.gold65),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ],
-      );
+      ),
+    );
+  }
 }
 
 class _CompassFace extends StatelessWidget {
@@ -241,13 +370,38 @@ class _CompassFace extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const RadialGradient(
-          colors: [AppColors.surfaceLight, AppColors.background],
+          colors: [AppColors.cardHighlight, AppColors.background],
+          stops: [0.0, 1.0],
         ),
-        border: Border.all(color: AppColors.gold30, width: 1.5),
+        border: Border.all(color: AppColors.gold25, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.black18,
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Tick marks
+          for (int i = 0; i < 36; i++)
+            Transform.rotate(
+              angle: i * 10 * math.pi / 180,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: i % 9 == 0 ? 2 : 1,
+                  height: i % 9 == 0 ? 12 : 6,
+                  color: i % 9 == 0
+                      ? AppColors.gold40
+                      : AppColors.textMuted.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+          // Cardinal labels
           for (final entry in const [
             ('N', 0.0),
             ('E', 90.0),
@@ -259,7 +413,7 @@ class _CompassFace extends StatelessWidget {
               child: Align(
                 alignment: Alignment.topCenter,
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 14),
+                  padding: const EdgeInsets.only(top: 24),
                   child: Text(
                     entry.$1,
                     style: TextStyle(
@@ -267,7 +421,7 @@ class _CompassFace extends StatelessWidget {
                           ? AppColors.gold
                           : AppColors.textSecondary,
                       fontWeight: FontWeight.w800,
-                      fontSize: 16,
+                      fontSize: 15,
                     ),
                   ),
                 ),
@@ -287,18 +441,40 @@ class _QiblaPointer extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = aligned ? AppColors.success : AppColors.gold;
     return SizedBox(
-      width: 280,
-      height: 280,
+      width: 290,
+      height: 290,
       child: Align(
         alignment: Alignment.topCenter,
         child: Padding(
-          padding: const EdgeInsets.only(top: 38),
+          padding: const EdgeInsets.only(top: 30),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.navigation_rounded, size: 40, color: color),
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.4),
+                      blurRadius: 16,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.navigation_rounded, size: 44, color: color),
+              ),
               const SizedBox(height: 4),
-              Icon(Icons.mosque_rounded, size: 22, color: color),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.mosque_rounded, size: 18, color: color),
+              ),
             ],
           ),
         ),

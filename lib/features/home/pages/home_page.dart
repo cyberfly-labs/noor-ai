@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/models/verse.dart';
@@ -475,7 +475,26 @@ class _HomePageState extends ConsumerState<HomePage> {
               ],
             ),
           ),
-          if (_isAnswerPopupVisible) _buildAnswerPopupOverlay(),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            switchInCurve: Curves.easeOutCirc,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.05),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: _isAnswerPopupVisible
+                ? _buildAnswerPopupOverlay()
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -619,88 +638,129 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildHeroBranding() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.cardHighlight,
-            AppColors.card,
-            AppColors.gold04,
-          ],
-          stops: const [0.0, 0.6, 1.0],
-        ),
-        border: Border.all(color: AppColors.gold14, width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return FutureBuilder<int?>(
+      future: QuranUserSyncService.instance.fetchCurrentStreakDays(),
+      builder: (context, snapshot) {
+        final remoteStreak = snapshot.data;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.cardHighlight,
+                AppColors.card,
+                AppColors.gold04,
+              ],
+              stops: const [0.0, 0.6, 1.0],
+            ),
+            border: Border.all(color: AppColors.gold14, width: 0.8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.gold10,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.gold20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.auto_awesome_rounded,
-                      size: 12,
-                      color: AppColors.gold,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
                     ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Noor AI',
-                      style: const TextStyle(
-                        color: AppColors.gold,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                    decoration: BoxDecoration(
+                      color: AppColors.gold10,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.gold20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 12,
+                          color: AppColors.gold,
+                        ),
+                        SizedBox(width: 5),
+                        Text(
+                          'Noor AI',
+                          style: TextStyle(
+                            color: AppColors.gold,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (remoteStreak != null && remoteStreak > 0) ...[
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.gold12, AppColors.gold08],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.gold20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.local_fire_department_rounded,
+                            size: 12,
+                            color: AppColors.gold,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$remoteStreak day${remoteStreak == 1 ? '' : 's'}',
+                            style: const TextStyle(
+                              color: AppColors.gold,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _greeting(),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Illuminate your path.',
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                  fontSize: 30,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Ask anything from the Quran — by voice or text.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            _greeting(),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Illuminate your path.',
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.8,
-              fontSize: 30,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Ask anything from the Quran — by voice or text.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -848,60 +908,66 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget _buildFeelingRow(
     ({String label, String subtitle, String prompt, IconData icon}) item,
   ) {
-    return GestureDetector(
-      onTap: () {
-        _textController.text = item.prompt;
-        _sendText(item.prompt);
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.card,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.divider, width: 0.5),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider, width: 0.5),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.gold08,
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: AppColors.gold15),
-              ),
-              child: Icon(item.icon, size: 20, color: AppColors.gold),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.label,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
+          onTap: () {
+            _textController.text = item.prompt;
+            _sendText(item.prompt);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.gold08,
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: AppColors.gold15),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.subtitle,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
+                  child: Icon(item.icon, size: 20, color: AppColors.gold),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.label,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: AppColors.textMuted,
+                ),
+              ],
             ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: AppColors.textMuted,
-            ),
-          ],
+          ),
         ),
       ),
     );

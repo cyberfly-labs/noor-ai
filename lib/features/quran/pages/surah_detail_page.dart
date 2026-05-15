@@ -5,6 +5,7 @@ import '../../../core/models/chapter_info.dart';
 import '../../../core/models/surah.dart';
 import '../../../core/models/verse.dart';
 import '../../../core/services/quran_api_service.dart';
+import '../../../core/services/quran_user_sync_service.dart';
 import '../../../core/services/voice_service.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -26,6 +27,27 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   void initState() {
     super.initState();
     _detailFuture = _loadDetail();
+    // Record reading session when user opens a surah
+    _recordReadingSession();
+  }
+
+  Future<void> _recordReadingSession() async {
+    try {
+      final firstVerse = Verse(
+        verseKey: '${widget.surahNumber}:1',
+        surahNumber: widget.surahNumber,
+        ayahNumber: 1,
+      );
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      await QuranUserSyncService.instance.updateReadingSession(firstVerse);
+      await QuranUserSyncService.instance.recordActivityForVerse(
+        firstVerse,
+        date: today,
+        seconds: 120,
+      );
+    } catch (_) {
+      // Non-critical — silently skip if not signed in
+    }
   }
 
   @override
@@ -96,50 +118,70 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
     final arabicName = surah?.name ?? '';
     final meta = surah == null
         ? '${detail.verses.length} ayahs'
-        : '${surah.numberOfAyahs} ayahs • ${_formatRevelationType(surah.revelationType)}';
+        : '${surah.numberOfAyahs} ayahs · ${_formatRevelationType(surah.revelationType)}';
     final pageRange = _pageRangeLabel(surah);
     final hasAudio = detail.verses.isNotEmpty;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.divider),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.cardHighlight,
+            AppColors.card,
+            AppColors.gold04,
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.gold20, width: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          if (subtitle.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-            ),
-          ],
-          if (arabicName.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                arabicName,
-                textDirection: TextDirection.rtl,
-                style: const TextStyle(
-                  color: AppColors.gold,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ),
-          ],
+              if (arabicName.isNotEmpty)
+                Text(
+                  arabicName,
+                  textDirection: TextDirection.rtl,
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 14),
           Wrap(
             spacing: 6,
@@ -153,42 +195,70 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: hasAudio
-                      ? () => _toggleSurahPlayback(detail)
-                      : null,
-                  icon: Icon(
-                    _isPlayingSurah
-                        ? Icons.stop_rounded
-                        : Icons.play_arrow_rounded,
-                    size: 20,
-                  ),
-                  label: Text(
-                    _isPlayingSurah ? 'Stop' : 'Listen',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                child: GestureDetector(
+                  onTap: hasAudio ? () => _toggleSurahPlayback(detail) : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      gradient: hasAudio ? AppColors.goldGradient : null,
+                      color: hasAudio ? null : AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _isPlayingSurah
+                              ? Icons.stop_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 20,
+                          color: hasAudio ? Colors.black : AppColors.textMuted,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isPlayingSurah ? 'Stop' : 'Listen',
+                          style: TextStyle(
+                            color: hasAudio ? Colors.black : AppColors.textMuted,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: detail.verses.isEmpty
+                child: GestureDetector(
+                  onTap: detail.verses.isEmpty
                       ? null
                       : () => context.push('/verse/${widget.surahNumber}/1'),
-                  icon: const Icon(Icons.auto_stories_rounded, size: 18),
-                  label: const Text(
-                    'Read',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.gold,
-                    side: BorderSide(color: AppColors.gold25),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: AppColors.gold10,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.gold25, width: 0.8),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.auto_stories_rounded,
+                          size: 18,
+                          color: AppColors.gold,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Read',
+                          style: TextStyle(
+                            color: AppColors.gold,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -215,26 +285,34 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.divider, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.info_outline_rounded,
-                size: 18,
-                color: AppColors.gold,
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: AppColors.gold08,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.info_outline_rounded,
+                  size: 15,
+                  color: AppColors.gold,
+                ),
               ),
               const SizedBox(width: 10),
-              Text(
+              const Text(
                 'About This Surah',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                style: TextStyle(
                   color: AppColors.gold,
                   fontWeight: FontWeight.w700,
-                  fontSize: 15,
+                  fontSize: 14,
                 ),
               ),
             ],
@@ -250,22 +328,22 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
               style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 13,
-                height: 1.6,
+                height: 1.65,
               ),
             ),
           ],
           if (canExpand) ...[
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: () =>
+            GestureDetector(
+              onTap: () =>
                   setState(() => _isInfoExpanded = !_isInfoExpanded),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.gold,
-                padding: EdgeInsets.zero,
-              ),
               child: Text(
                 _isInfoExpanded ? 'Show less' : 'Read more',
-                style: const TextStyle(fontSize: 13),
+                style: const TextStyle(
+                  color: AppColors.gold,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -275,94 +353,89 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   }
 
   Widget _buildVerseCard(BuildContext context, Verse verse) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () =>
-          context.push('/verse/${verse.surahNumber}/${verse.ayahNumber}'),
-      child: Ink(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.divider),
+    return RepaintBoundary(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () =>
+            context.push('/verse/${verse.surahNumber}/${verse.ayahNumber}'),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider, width: 0.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.gold08,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: AppColors.gold15),
+                    ),
+                    child: Text(
+                      '${verse.ayahNumber}',
+                      style: const TextStyle(
+                        color: AppColors.gold,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => _playVerseAudio(verse),
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: AppColors.gold08,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: AppColors.gold,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if ((verse.arabicText ?? '').isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerRight,
                   child: Text(
-                    '${verse.ayahNumber}',
+                    verse.arabicText!,
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.right,
                     style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+                      color: AppColors.gold,
+                      fontSize: 22,
+                      height: 1.9,
                     ),
                   ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => _playVerseAudio(verse),
-                  icon: const Icon(
-                    Icons.play_circle_fill_rounded,
-                    color: AppColors.gold,
-                    size: 24,
-                  ),
-                  tooltip: 'Play ayah',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                ),
-                const SizedBox(width: 4),
+              ],
+              if ((verse.translationText ?? '').isNotEmpty) ...[
+                const SizedBox(height: 12),
                 Text(
-                  verse.verseKey,
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                  verse.translationText!,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.6,
                   ),
                 ),
               ],
-            ),
-            if ((verse.arabicText ?? '').isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  verse.arabicText!,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 22,
-                    height: 1.9,
-                  ),
-                ),
-              ),
             ],
-            if ((verse.translationText ?? '').isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                verse.translationText!,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 13,
-                  height: 1.6,
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );

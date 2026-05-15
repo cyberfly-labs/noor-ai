@@ -10,6 +10,7 @@ import '../../../core/services/quran_user_session_service.dart';
 import '../../../core/services/quran_user_sync_service.dart';
 import '../../../core/services/voice_service.dart';
 import '../../../core/theme/app_theme.dart';
+import 'about_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -229,9 +230,19 @@ class _SettingsPageState extends State<SettingsPage> {
           _downloadStatus = 'All models downloaded!';
         });
       }
-    } catch (_) {
+    } catch (e) {
       await _progressSubscription?.cancel();
-      rethrow;
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadStatus = 'Download failed: $e';
+        });
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text('Download failed. Please try again.')),
+          );
+      }
     }
   }
 
@@ -354,6 +365,20 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.info_outline_rounded,
               title: 'Noor AI',
               subtitle: 'Version 1.0.0',
+              trailing: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AboutPage(),
+                  ),
+                ),
+                child: const Text(
+                  'About',
+                  style: TextStyle(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
             _settingCard(
               icon: Icons.menu_book_rounded,

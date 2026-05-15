@@ -87,7 +87,7 @@ class _JuzIndexPageState extends State<JuzIndexPage> {
       padding: EdgeInsets.fromLTRB(
           16, 12, 16, MediaQuery.of(context).padding.bottom + 80),
       itemCount: juzs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (_, i) => _JuzTile(juz: juzs[i]),
     );
   }

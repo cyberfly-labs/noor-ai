@@ -164,6 +164,13 @@ class _ToolsHubPageState extends State<ToolsHubPage> {
       icon: Icons.people_rounded,
       tools: [
         _Tool(
+          label: 'Collections',
+          subtitle: 'Organise verses by theme',
+          icon: Icons.collections_bookmark_rounded,
+          route: '/tools/collections',
+          featured: true,
+        ),
+        _Tool(
           label: 'Reflections',
           subtitle: 'Quran Reflect feed',
           icon: Icons.forum_rounded,
@@ -439,7 +446,7 @@ class _ToolsHubPageState extends State<ToolsHubPage> {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _featuredTools.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (_, i) =>
                         _FeaturedToolChip(tool: _featuredTools[i]),
                   ),

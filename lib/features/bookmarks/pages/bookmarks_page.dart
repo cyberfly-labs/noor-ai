@@ -99,7 +99,7 @@ class _BookmarksPageState extends ConsumerState<BookmarksPage> {
                         bottomPadding + 80,
                       ),
                       itemCount: state.bookmarks.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final bookmark = state.bookmarks[index];
                         return FadeInUp(

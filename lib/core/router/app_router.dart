@@ -12,6 +12,7 @@ import '../../features/quran/pages/quran_page.dart';
 import '../../features/quran/pages/surah_detail_page.dart';
 import '../../features/settings/pages/settings_page.dart';
 import '../../features/shell/shell_page.dart';
+import '../../features/tools/collections/collections_page.dart';
 import '../../features/tools/duas/duas_page.dart';
 import '../../features/tools/fasting/fasting_tracker_page.dart';
 import '../../features/tools/hifz/hifz_tracker_page.dart';
@@ -207,6 +208,10 @@ final appRouter = GoRouter(
             GoRoute(
               path: 'reminders',
               builder: (context, state) => const SmartRemindersPage(),
+            ),
+            GoRoute(
+              path: 'collections',
+              builder: (context, state) => const CollectionsPage(),
             ),
           ],
         ),

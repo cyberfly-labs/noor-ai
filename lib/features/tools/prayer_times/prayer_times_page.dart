@@ -119,6 +119,14 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
     final upcoming = entries.where((e) => e.$2.isAfter(now)).toList();
     final next = upcoming.isNotEmpty ? upcoming.first : entries.first;
 
+    // Time until next prayer
+    final diff = next.$2.difference(now);
+    final hoursLeft = diff.inHours;
+    final minsLeft = diff.inMinutes % 60;
+    final timeUntil = hoursLeft > 0
+        ? '${hoursLeft}h ${minsLeft}m'
+        : '${minsLeft}m';
+
     return ListView(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -127,48 +135,129 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
         MediaQuery.of(context).padding.bottom + 80,
       ),
       children: [
+        // ── Next prayer hero card ──────────────────
         Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            gradient: AppColors.goldGradient,
-            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.goldDark, AppColors.gold, AppColors.goldLight],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.gold.withValues(alpha: 0.25),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              const Text('Next prayer',
-                  style: TextStyle(
-                      color: Colors.black87, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Text(next.$1,
-                  style: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text(_fmt(next.$2),
-                  style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Next Prayer',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      next.$1,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _fmt(next.$2),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Icon(next.$3, color: Colors.black38, size: 36),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'in $timeUntil',
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
         const SizedBox(height: 20),
-        ...entries.map((e) => _row(e.$1, _fmt(e.$2), e.$3,
-            isNext: e.$1 == next.$1)),
+        ...entries.map(
+          (e) => _row(e.$1, _fmt(e.$2), e.$3, isNext: e.$1 == next.$1),
+        ),
         const SizedBox(height: 16),
         if (_sunnah != null) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('Sunnah times',
-                style: TextStyle(
-                    color: AppColors.gold, fontWeight: FontWeight.w700)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: AppColors.gold,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Sunnah Times',
+                  style: TextStyle(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
-          _row('Middle of the night', _fmt(_sunnah!.middleOfTheNight),
-              Icons.dark_mode_rounded),
-          _row('Last third of the night', _fmt(_sunnah!.lastThirdOfTheNight),
-              Icons.auto_awesome_rounded),
+          _row(
+            'Middle of the night',
+            _fmt(_sunnah!.middleOfTheNight),
+            Icons.dark_mode_rounded,
+          ),
+          _row(
+            'Last third of the night',
+            _fmt(_sunnah!.lastThirdOfTheNight),
+            Icons.auto_awesome_rounded,
+          ),
         ],
         const SizedBox(height: 16),
         _buildSettings(),
@@ -192,23 +281,46 @@ class _PrayerTimesPageState extends State<PrayerTimesPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: isNext ? AppColors.gold10 : AppColors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isNext ? AppColors.gold30 : AppColors.divider, width: 0.8),
+          color: isNext ? AppColors.gold30 : AppColors.divider,
+          width: 0.8,
+        ),
       ),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.gold, size: 20),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isNext ? AppColors.gold20 : AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: isNext ? AppColors.gold : AppColors.textMuted,
+              size: 18,
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(label,
-                style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600)),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isNext ? AppColors.textPrimary : AppColors.textSecondary,
+                fontWeight: isNext ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
           ),
-          Text(time,
-              style: const TextStyle(
-                  color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+          Text(
+            time,
+            style: TextStyle(
+              color: isNext ? AppColors.gold : AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
         ],
       ),
     );

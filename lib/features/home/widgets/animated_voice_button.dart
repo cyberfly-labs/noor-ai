@@ -72,7 +72,7 @@ class _AnimatedVoiceButtonState extends State<AnimatedVoiceButton>
           if (isActive)
             AnimatedBuilder(
               animation: _pulseCtrl,
-              builder: (_, __) {
+              builder: (_, _) {
                 final v = _pulseCtrl.value;
                 return Container(
                   width: s + 24,
@@ -101,7 +101,7 @@ class _AnimatedVoiceButtonState extends State<AnimatedVoiceButton>
             onTap: widget.onTap,
             child: AnimatedBuilder(
               animation: _pulseCtrl,
-              builder: (_, __) {
+              builder: (_, _) {
                 final scale = widget.state == VoiceState.idle
                     ? 1.0 + _pulseCtrl.value * 0.03
                     : 1.0;
@@ -171,7 +171,7 @@ class _AnimatedVoiceButtonState extends State<AnimatedVoiceButton>
       case VoiceState.idle:
         return AnimatedBuilder(
           animation: _pulseCtrl,
-          builder: (_, __) => CustomPaint(
+          builder: (_, _) => CustomPaint(
             size: Size(size * 1.5, size * 1.5),
             painter: _IdleGlowPainter(progress: _pulseCtrl.value),
           ),
@@ -179,7 +179,7 @@ class _AnimatedVoiceButtonState extends State<AnimatedVoiceButton>
       case VoiceState.listening:
         return AnimatedBuilder(
           animation: _ringCtrl,
-          builder: (_, __) => CustomPaint(
+          builder: (_, _) => CustomPaint(
             size: Size(size * 1.6, size * 1.6),
             painter: _ListeningRipplePainter(progress: _ringCtrl.value),
           ),
@@ -187,7 +187,7 @@ class _AnimatedVoiceButtonState extends State<AnimatedVoiceButton>
       case VoiceState.processing:
         return AnimatedBuilder(
           animation: _spinCtrl,
-          builder: (_, __) => CustomPaint(
+          builder: (_, _) => CustomPaint(
             size: Size(size * 1.4, size * 1.4),
             painter: _HaloPainter(progress: _spinCtrl.value),
           ),
@@ -195,7 +195,7 @@ class _AnimatedVoiceButtonState extends State<AnimatedVoiceButton>
       case VoiceState.speaking:
         return AnimatedBuilder(
           animation: _ringCtrl,
-          builder: (_, __) => CustomPaint(
+          builder: (_, _) => CustomPaint(
             size: Size(size * 1.5, size * 1.5),
             painter: _SpeakingWavePainter(progress: _ringCtrl.value),
           ),
