@@ -66,7 +66,6 @@ class LlmService {
       final configJson = jsonEncode({
         'data_dir': modelDir.endsWith('/') ? modelDir : '$modelDir/',
         'models': {
-          'embedding_path': ModelManager.instance.modelPath(ModelType.embedding),
           'whisper_dir': ModelManager.instance.modelPath(ModelType.asr),
         },
       });

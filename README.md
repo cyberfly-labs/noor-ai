@@ -19,7 +19,6 @@ Voice Input → ASR (Whisper) → Intent Detection → API Fetch → LLM (Qwen3.
 | ASR | whisper-base-mnn |
 | TTS | supertonic-tts-mnn |
 | LLM | Qwen3.5-0.8B-MNN |
-| Embeddings | bge-small-en-v1.5-mnn |
 | Quran Content API | Quran Foundation via Node backend |
 | Quran User API | Quran Foundation OAuth via backend token exchange + User APIs |
 | Local DB | SQLite (sqflite) |
@@ -134,7 +133,6 @@ On first launch, go to **Settings → Download Models** to fetch the on-device A
 | whisper-base-mnn | ~40 MB | Speech recognition |
 | supertonic-tts-mnn | ~30 MB | Text-to-speech |
 | Qwen3.5-0.8B-MNN | ~500 MB | Question answering |
-| bge-small-en-v1.5-mnn | ~30 MB | Text embeddings |
 
 ### Prebuilt Vector DB
 

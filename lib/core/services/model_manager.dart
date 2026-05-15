@@ -33,7 +33,7 @@ class DownloadProgress {
       const DownloadProgress(bytesReceived: 0, totalBytes: 0, progress: 0);
 }
 
-enum ModelType { asr, tts, llm, embedding }
+enum ModelType { asr, tts, llm }
 
 class ModelInfo {
   final ModelType type;
@@ -171,13 +171,6 @@ class ModelManager {
       ],
       subDir: 'llm',
     ),
-    ModelInfo(
-      type: ModelType.embedding,
-      name: 'BGE Small Embeddings',
-      repoId: 'developerabu/bge-small-en-v1.5-mnn',
-      files: ['model.mnn', 'tokenizer.json'],
-      subDir: 'embedding',
-    ),
   ];
 
   Future<void> initialize() {
@@ -255,8 +248,7 @@ class ModelManager {
 
   Future<bool> areRagModelsDownloaded({bool forceRefresh = false}) async {
     final states = await getDownloadedModelStates(forceRefresh: forceRefresh);
-    return (states[ModelType.llm] ?? false) &&
-        (states[ModelType.embedding] ?? false);
+    return states[ModelType.llm] ?? false;
   }
 
   Future<Map<ModelType, bool>> getDownloadedModelStates({
