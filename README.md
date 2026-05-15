@@ -8,6 +8,23 @@ An offline-first AI voice assistant that helps users interact with the Quran usi
 Voice Input → ASR (Whisper) → Intent Detection → Hybrid Retrieval (MCP Search + Direct API) → LLM (Qwen 3.5) → TTS → UI Update
 ```
 
+## Quran MCP Integration
+
+Noor AI leverages the **Quran Model Context Protocol (MCP)** server (`mcp.quran.ai`) to power its high-precision semantic search and RAG (Retrieval-Augmented Generation) pipeline.
+
+### Why MCP?
+While traditional keyword search often fails with conceptual or emotional queries (e.g., "how to find peace during hardship"), the Quran MCP provides:
+- **Semantic Understanding**: Finds verses based on meaning and context, not just matching words.
+- **Scholar-Grounded Search**: Retrieves verses that are contextually relevant to the user's intent.
+- **RAG Grounding**: Before the on-device LLM (Qwen 3.5) answers a question, it queries the MCP server to retrieve grounded "evidence." This ensures the AI's explanation is anchored in the actual text of the Quran, significantly reducing hallucinations.
+
+### Hybrid Retrieval Strategy
+To ensure a premium user experience, the app employs a hybrid approach:
+- **MCP for Search**: The `search_quran` tool is used for all semantic and topic-based queries.
+- **Direct Content API**: Once the MCP identifies the relevant verse keys, the app pulls the detailed translation and tafsir directly from the high-performance **Quran.com v4 API**.
+- **Local Caching**: All retrieved data is cached in a local SQLite database, providing near-instant load times for subsequent interactions.
+
+
 ### Tech Stack
 
 | Layer | Technology |
@@ -93,13 +110,13 @@ The native C++ core (in `native/cpp/`) is powered by **MNN** and **Edgemind**, p
 ## Features
 
 - **Voice-first interaction**: Tap the golden orb, speak naturally to ask about any verse or topic.
-- **Semantic RAG Search**: Powered by **Quran MCP**, providing contextually relevant verses even for vague queries.
-- **Offline-First Intelligence**: All AI inference (Speech-to-Text, LLM Reasoning, Text-to-Speech) runs entirely on-device.
+- **Semantic RAG Search**: Powered by **Quran MCP** (`mcp.quran.ai`), providing contextually relevant verses even for vague or emotional queries.
+- **Offline-First Intelligence**: All AI inference (Speech-to-Text, LLM Reasoning, Text-to-Speech) runs entirely on-device via MNN.
 - **Quran Foundation Integration**:
     - **Bookmarks**: Full sync with your Quran.com account.
     - **Streaks & Goals**: Keep your daily reading habit alive.
     - **Reflections**: Share and read reflections via the Post API.
-- **Emotional Guidance**: AI-matched verses for feelings like anxiety, gratitude, or seeking hope.
+- **Emotional Guidance**: AI-grounded verses for feelings like anxiety, gratitude, or seeking hope.
 - **Cache-First Content**: Blazing fast verse and tafsir loading via local SQLite caching and parallelized API calls.
 
 ## Credits
